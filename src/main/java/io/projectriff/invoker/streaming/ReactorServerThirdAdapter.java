@@ -41,6 +41,7 @@ public class ReactorServerThirdAdapter extends ReactorRiffGrpc.RiffImplBase {
 		this.fn = fn;
 		this.fnInputType = ResolvableType.forClass(fi.getInputType(fn));
 		this.fnOutputType = ResolvableType.forClass(fi.getOutputType(fn));
+		System.out.println("**** " + fi.getInputWrapper(fn));
 
 		converters.add(new MappingJackson2HttpMessageConverter());
 		converters.add(new FormHttpMessageConverter());

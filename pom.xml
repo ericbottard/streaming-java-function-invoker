@@ -47,6 +47,14 @@
 			<groupId>org.springframework.cloud</groupId>
 			<artifactId>spring-cloud-function-deployer</artifactId>
 			<version>${spring.cloud.function.version}</version>
+			<!--
+			<exclusions>
+				<exclusion>
+					<groupId>org.springframework.cloud</groupId>
+					<artifactId>spring-cloud-deployer-resource-maven</artifactId>
+				</exclusion>
+			</exclusions>
+			-->
 		</dependency>
 		<dependency>
 			<groupId>log4j</groupId>
