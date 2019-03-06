@@ -20,7 +20,7 @@ import org.springframework.context.annotation.Bean;
 public class JavaFunctionInvoker {
 
 	public static void main(String[] args) throws InterruptedException {
-		new ApplicationBootstrap().run(JavaFunctionInvoker.class);
+		new ApplicationBootstrap().run(JavaFunctionInvoker.class, "--function.runner.isolated=false");
 		Object o = new Object();
 		synchronized (o) {
 			o.wait();
