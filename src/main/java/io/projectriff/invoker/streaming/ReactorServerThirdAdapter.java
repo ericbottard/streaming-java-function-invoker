@@ -41,7 +41,10 @@ public class ReactorServerThirdAdapter extends ReactorRiffGrpc.RiffImplBase {
 		this.fn = fn;
 		this.fnInputType = ResolvableType.forClass(fi.getInputType(fn));
 		this.fnOutputType = ResolvableType.forClass(fi.getOutputType(fn));
+		System.out.println("**** " + fi.getInputType(fn));
+		System.out.println("**** " + fi.getOutputType(fn));
 		System.out.println("**** " + fi.getInputWrapper(fn));
+		System.out.println("**** " + fi.getOutputWrapper(fn));
 
 		converters.add(new MappingJackson2HttpMessageConverter());
 		converters.add(new FormHttpMessageConverter());
@@ -68,7 +71,8 @@ public class ReactorServerThirdAdapter extends ReactorRiffGrpc.RiffImplBase {
 								.transform(fn);
 						return transform
 								.map(encode(accept))
-								.map(NextHttpOutputMessage::asSignal);
+								.map(NextHttpOutputMessage::asSignal)
+								.doOnError(t -> System.err.println("OnError: " + t));
 					}
 					return Flux.error(new RuntimeException("Expected first frame to be of type Start"));
 				});

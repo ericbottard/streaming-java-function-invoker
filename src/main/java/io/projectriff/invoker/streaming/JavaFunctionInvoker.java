@@ -6,14 +6,16 @@ import io.grpc.BindableService;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.function.context.FunctionRegistry;
 import org.springframework.cloud.function.context.catalog.FunctionInspector;
+import org.springframework.cloud.function.context.config.ContextFunctionCatalogAutoConfiguration;
 import org.springframework.cloud.function.deployer.ApplicationBootstrap;
 import org.springframework.cloud.function.deployer.EnableFunctionDeployer;
 import org.springframework.context.annotation.Bean;
 
-@SpringBootApplication
+@SpringBootApplication(/*exclude = ContextFunctionCatalogAutoConfiguration.class*/)
 @EnableFunctionDeployer
 public class JavaFunctionInvoker {
 
