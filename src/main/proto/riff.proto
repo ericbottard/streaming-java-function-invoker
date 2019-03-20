@@ -1,18 +1,17 @@
 syntax = "proto3";
 
 option java_multiple_files = true;
-option java_package = "io.projectriff.invoker.streaming";
+option java_package = "io.projectriff.invoker.server";
 option java_outer_classname = "Invoker";
 
 package streaming;
 
 service Riff {
-    rpc Invoke(stream Signal) returns (stream Signal) {}
+       rpc Invoke(stream Signal) returns (stream Signal) {}
 }
 
 message Start {
-    string contentType = 1;
-    string accept = 2;
+    string accept = 1;
 }
 
 message Next {
@@ -20,17 +19,9 @@ message Next {
     map<string, string> headers = 2;
 }
 
-message Complete {
-}
-
-message Error {
-}
-
 message Signal {
     oneof value {
         Start start = 1;
         Next next = 2;
-        Complete complete = 3;
-        Error error = 4;
     }
 }
