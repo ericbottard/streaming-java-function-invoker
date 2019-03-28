@@ -21,27 +21,29 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 		<java.version>11</java.version>
-		<grpc.version>1.15.1</grpc.version>
-		<reactive-grpc.version>0.9.1-SNAPSHOT</reactive-grpc.version>
 		<spring.cloud.function.version>2.0.0.BUILD-SNAPSHOT</spring.cloud.function.version>
 		<reactor.version>3.2.5.RELEASE</reactor.version>
+		<rsocket.version>0.11.8</rsocket.version>
+		<rsocket-rpc.version>0.2.10</rsocket-rpc.version>
+		<protoc.version>3.6.1</protoc.version>
 	</properties>
 
 	<dependencies>
 		<dependency>
-			<groupId>io.grpc</groupId>
-			<artifactId>grpc-netty-shaded</artifactId>
-			<version>${grpc.version}</version>
+			<groupId>io.rsocket.rpc</groupId>
+			<artifactId>rsocket-rpc-core</artifactId>
+			<version>${rsocket-rpc.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>io.rsocket.rpc</groupId>
+					<artifactId>rsocket-rpc-protobuf</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 		<dependency>
-			<groupId>io.grpc</groupId>
-			<artifactId>grpc-protobuf</artifactId>
-			<version>${grpc.version}</version>
-		</dependency>
-		<dependency>
-			<groupId>io.grpc</groupId>
-			<artifactId>grpc-stub</artifactId>
-			<version>${grpc.version}</version>
+			<groupId>io.rsocket</groupId>
+			<artifactId>rsocket-transport-netty</artifactId>
+			<version>${rsocket.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.cloud</groupId>
@@ -57,15 +59,9 @@
 			-->
 		</dependency>
 		<dependency>
-			<groupId>com.salesforce.servicelibs</groupId>
-			<artifactId>reactor-grpc-stub</artifactId>
-			<version>${reactive-grpc.version}</version>
-		</dependency>
-		<!-- Override reactor version to get switchOnFirst() -->
-		<dependency>
-			<groupId>io.projectreactor</groupId>
-			<artifactId>reactor-core</artifactId>
-			<version>${reactor.version}</version>
+			<groupId>com.google.protobuf</groupId>
+			<artifactId>protobuf-java-util</artifactId>
+			<version>${protoc.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
@@ -119,19 +115,9 @@
 				<artifactId>protobuf-maven-plugin</artifactId>
 				<version>0.5.1</version>
 				<configuration>
-					<protocArtifact>com.google.protobuf:protoc:3.5.1-1:exe:${os.detected.classifier}</protocArtifact>
-					<pluginId>grpc-java</pluginId>
-					<pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}
-					</pluginArtifact>
-					<protocPlugins>
-						<protocPlugin>
-							<id>reactor-grpc</id>
-							<groupId>com.salesforce.servicelibs</groupId>
-							<artifactId>reactor-grpc</artifactId>
-							<version>0.9.0</version>
-							<mainClass>com.salesforce.reactorgrpc.ReactorGrpcGenerator</mainClass>
-						</protocPlugin>
-					</protocPlugins>
+					<protocArtifact>com.google.protobuf:protoc:${protoc.version}:exe:${os.detected.classifier}</protocArtifact>
+					<pluginId>rsocket-java</pluginId>
+					<pluginArtifact>io.rsocket.rpc:rsocket-rpc-protobuf:${rsocket-rpc.version}:exe:${os.detected.classifier}</pluginArtifact>
 				</configuration>
 				<executions>
 					<execution>

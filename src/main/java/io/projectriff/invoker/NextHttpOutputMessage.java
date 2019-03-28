@@ -4,8 +4,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 import com.google.protobuf.ByteString;
-import io.projectriff.invoker.server.Next;
-import io.projectriff.invoker.server.Signal;
+import io.projectriff.invoker.server.Message;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpOutputMessage;
@@ -26,11 +25,10 @@ public class NextHttpOutputMessage implements HttpOutputMessage {
 			return headers;
 		}
 
-		public Signal asSignal() {
-			return Signal.newBuilder().setNext(
-					Next.newBuilder()
+		public Message asMessage() {
+			return Message.newBuilder()
 							.setPayload(output.toByteString())
-							.putAllHeaders(headers.toSingleValueMap()))
+							.putAllHeaders(headers.toSingleValueMap())
 					.build();
 		}
 

@@ -1,28 +1,27 @@
 package io.projectriff.invoker.client;
 
 import java.io.IOException;
-import java.io.InputStream;
+import java.net.URI;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import io.grpc.Channel;
-import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.ByteBufUtil;
 import io.projectriff.invoker.NextHttpInputMessage;
 import io.projectriff.invoker.NextHttpOutputMessage;
-import io.projectriff.invoker.server.ReactorRiffGrpc;
-import io.projectriff.invoker.server.Signal;
-import io.projectriff.invoker.server.Start;
+import io.projectriff.invoker.server.Message;
+import io.projectriff.invoker.server.RiffClient;
+import io.rsocket.RSocket;
+import io.rsocket.RSocketFactory;
+import io.rsocket.transport.netty.client.TcpClientTransport;
+import io.rsocket.transport.netty.client.WebsocketClientTransport;
 import reactor.core.publisher.Flux;
 
 import org.springframework.core.convert.support.DefaultConversionService;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpInputMessage;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.FormHttpMessageConverter;
 import org.springframework.http.converter.HttpMessageConverter;
@@ -36,15 +35,15 @@ import org.springframework.http.converter.json.MappingJackson2HttpMessageConvert
  * A helper for invoking riff functions from the client side.
  *
  * <p>
- * Takes care of calling the gRPC remote end with the appropriate Start signal,
- * marshalling the input and un-marshalling the invocation result.
+ * Takes care of calling the rsocket client side with the appropriate, marshalling the
+ * input and un-marshalling the invocation result.
  * </p>
  *
  * @author Eric Bottard
  */
 public class ClientFunctionInvoker<T, R> implements Function<Flux<T>, Flux<R>> {
 
-	private final ReactorRiffGrpc.ReactorRiffStub stub;
+	private final RiffClient stub;
 
 	private final List<HttpMessageConverter> converters = new ArrayList<>();
 
@@ -54,8 +53,8 @@ public class ClientFunctionInvoker<T, R> implements Function<Flux<T>, Flux<R>> {
 
 	private final Class<R> outputType;
 
-	public ClientFunctionInvoker(Channel channel, Class<T> inputType, Class<R> outputType) {
-		stub = ReactorRiffGrpc.newReactorStub(channel);
+	public ClientFunctionInvoker(RSocket rSocket, Class<T> inputType, Class<R> outputType) {
+		stub = new RiffClient(rSocket);
 		this.inputType = inputType;
 		this.outputType = outputType;
 
@@ -90,18 +89,14 @@ public class ClientFunctionInvoker<T, R> implements Function<Flux<T>, Flux<R>> {
 
 	@Override
 	public Flux<R> apply(Flux<T> input) {
-		Signal start = Signal.newBuilder().setStart(Start.newBuilder().setAccept(accept).build()).build();
-
-		Flux<Signal> request = Flux.concat(
-				Flux.just(start),
-				input.map(this::convertToSignal) //
-		);
-		Flux<Signal> response = stub.invoke(request);
+		Flux<Message> request = input.map(this::convertToSignal);
+		ByteBuf metadata = ByteBufUtil.writeUtf8(ByteBufAllocator.DEFAULT, accept);
+		Flux<Message> response = stub.invoke(request, metadata);
 		return response.map(this::convertFromSignal);
 	}
 
-	private R convertFromSignal(Signal signal) {
-		String ct = signal.getNext().getHeadersOrThrow("Content-Type");
+	private R convertFromSignal(Message signal) {
+		String ct = signal.getHeadersOrThrow("Content-Type");
 		MediaType contentType = MediaType.parseMediaType(ct);
 		NextHttpInputMessage inputMessage = new NextHttpInputMessage(signal);
 		try {
@@ -117,7 +112,7 @@ public class ClientFunctionInvoker<T, R> implements Function<Flux<T>, Flux<R>> {
 		throw new HttpMessageNotReadableException("Could not find suitable converter", inputMessage);
 	}
 
-	private Signal convertToSignal(T t) {
+	private Message convertToSignal(T t) {
 		if (t != null) {
 			try {
 				for (HttpMessageConverter converter : converters) {
@@ -125,7 +120,7 @@ public class ClientFunctionInvoker<T, R> implements Function<Flux<T>, Flux<R>> {
 						if (converter.canWrite(t.getClass(), (MediaType) mediaType)) {
 							NextHttpOutputMessage outputMessage = new NextHttpOutputMessage();
 							converter.write(t, (MediaType) mediaType, outputMessage);
-							return outputMessage.asSignal();
+							return outputMessage.asMessage();
 						}
 					}
 				}
@@ -142,11 +137,12 @@ public class ClientFunctionInvoker<T, R> implements Function<Flux<T>, Flux<R>> {
 	}
 
 	public static void main(String[] args) throws IOException {
-		ManagedChannel channel = ManagedChannelBuilder.forAddress("localhost", 8080)
-				.usePlaintext()
-				.overrideAuthority("encode.default.example.com")
-				.build();
-		ClientFunctionInvoker<Integer, Integer> fn = new ClientFunctionInvoker<>(channel, Integer.class, Integer.class);
+		RSocket rSocket = RSocketFactory
+				.connect()
+				.transport(WebsocketClientTransport.create( 8080))
+				.start()
+				.block();
+		ClientFunctionInvoker<Integer, Integer> fn = new ClientFunctionInvoker<>(rSocket, Integer.class, Integer.class);
 
 		Flux<Integer> input = Flux.just(1, 1, 1, 0, 0, 1, 1, 1);
 		Flux<Integer> output = fn.apply(input);

@@ -1,12 +1,16 @@
 package io.projectriff.invoker.server;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
+import io.netty.buffer.ByteBuf;
 import io.projectriff.invoker.NextHttpInputMessage;
 import io.projectriff.invoker.NextHttpOutputMessage;
+import io.rsocket.rpc.frames.Metadata;
+import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
 
 import org.springframework.cloud.function.context.catalog.FunctionInspector;
@@ -22,20 +26,7 @@ import org.springframework.http.converter.ObjectToStringHttpMessageConverter;
 import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 
-/**
- * A reactive gRPC adapter that adapts a user function (with reactive signature) and makes
- * it invokable via the riff rpc protocol.
- *
- * <p>
- * This adapter reads the first signal, remembering the client's {@code Accept}'ed types,
- * then marshalls and un-marshalls input and output of the function, according to a set of
- * pre-defined {@link HttpMessageConverter} or injected ones if present in the application
- * context.
- * </p>
- *
- * @author Eric Bottard
- */
-public class ReactorServerAdapter extends ReactorRiffGrpc.RiffImplBase {
+public class RiffAdapter implements Riff {
 
 	private final Function fn;
 
@@ -45,7 +36,7 @@ public class ReactorServerAdapter extends ReactorRiffGrpc.RiffImplBase {
 
 	private List<HttpMessageConverter> converters = new ArrayList<>();
 
-	public ReactorServerAdapter(Function fn, FunctionInspector fi) {
+	public RiffAdapter(Function fn, FunctionInspector fi) {
 		this.fn = fn;
 		this.fnInputType = ResolvableType.forClass(fi.getInputType(fn));
 		this.fnOutputType = ResolvableType.forClass(fi.getOutputType(fn));
@@ -65,26 +56,22 @@ public class ReactorServerAdapter extends ReactorRiffGrpc.RiffImplBase {
 	}
 
 	@Override
-	public Flux<Signal> invoke(Flux<Signal> request) {
-		return request
-				.switchOnFirst((first, stream) -> {
-					if (first.hasValue() && first.get().hasStart()) {
-						List<MediaType> accept = MediaType.parseMediaTypes(first.get().getStart().getAccept());
-						Flux<?> transform = stream.skip(1L)
-								.doOnNext(s -> {
-									System.out.println(s);
-								})
-								.map(NextHttpInputMessage::new)
-								.map(this::decode)
-								.transform(fn)
-								.doOnError(e -> System.out.println("Seen it: " + e));
-						return transform
-								.map(encode(accept))
-								.map(NextHttpOutputMessage::asSignal)
-								.doOnError(Throwable::printStackTrace);
-					}
-					return Flux.error(new RuntimeException("Expected first frame to be of type Start"));
-				});
+	public Flux<Message> invoke(Publisher<Message> messages, ByteBuf metadata) {
+		ByteBuf userMetadata = Metadata.getMetadata(metadata);
+		List<MediaType> accept = MediaType.parseMediaTypes(userMetadata.toString(Charset.defaultCharset()));
+		Flux<?> transform = Flux.from(messages)
+				.doOnNext(s -> {
+					System.out.println(s);
+				})
+				.map(NextHttpInputMessage::new)
+				.map(this::decode)
+				.transform(fn)
+				.doOnError(e -> System.out.println("Seen it: " + e));
+		return transform
+				.map(encode(accept))
+				.map(NextHttpOutputMessage::asMessage)
+				.doOnError(Throwable::printStackTrace);
+
 	}
 
 	private Function<Object, NextHttpOutputMessage> encode(List<MediaType> accept) {
