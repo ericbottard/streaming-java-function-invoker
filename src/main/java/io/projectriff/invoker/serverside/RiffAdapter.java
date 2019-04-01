@@ -1,4 +1,4 @@
-package io.projectriff.invoker.server;
+package io.projectriff.invoker.serverside;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -9,6 +9,8 @@ import java.util.function.Function;
 import io.netty.buffer.ByteBuf;
 import io.projectriff.invoker.NextHttpInputMessage;
 import io.projectriff.invoker.NextHttpOutputMessage;
+import io.projectriff.invoker.server.Message;
+import io.projectriff.invoker.server.Riff;
 import io.rsocket.rpc.frames.Metadata;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;

@@ -39,7 +39,7 @@ public class ExampleServer {
 				@Override
 				public Flux<Payload> requestStream(Payload payload) {
 					System.out.println("Payload "+  payload.getDataUtf8());
-					return Flux.just(DefaultPayload.create("hello from server"));
+					return Flux.just(DefaultPayload.create("hello from serverside"));
 				}
 			});
 		}

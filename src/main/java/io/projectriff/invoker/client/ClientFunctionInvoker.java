@@ -3,6 +3,7 @@ package io.projectriff.invoker.client;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -17,7 +18,6 @@ import io.projectriff.invoker.server.Message;
 import io.projectriff.invoker.server.RiffClient;
 import io.rsocket.RSocket;
 import io.rsocket.RSocketFactory;
-import io.rsocket.transport.netty.client.TcpClientTransport;
 import io.rsocket.transport.netty.client.WebsocketClientTransport;
 import reactor.core.publisher.Flux;
 
@@ -137,15 +137,25 @@ public class ClientFunctionInvoker<T, R> implements Function<Flux<T>, Flux<R>> {
 	}
 
 	public static void main(String[] args) throws IOException {
+
+//		WebsocketClientTransport websocketClientTransport = WebsocketClientTransport
+//				.create("35.241.251.246", 80);
+		WebsocketClientTransport websocketClientTransport = WebsocketClientTransport
+				.create(URI.create("ws://kmprssr.default.35.241.251.246.nip.io/ws"));
+//		websocketClientTransport = WebsocketClientTransport
+//				.create(URI.create("ws://localhost:8080/ws"));
+		websocketClientTransport
+				.setTransportHeaders(() -> Collections.singletonMap("Authority", "kmprssr.default.35.241.251.246.nip.io"));
+
 		RSocket rSocket = RSocketFactory
 				.connect()
-				.transport(WebsocketClientTransport.create( 8080))
+				.transport(websocketClientTransport)
 				.start()
 				.block();
-		ClientFunctionInvoker<Integer, Integer> fn = new ClientFunctionInvoker<>(rSocket, Integer.class, Integer.class);
+		ClientFunctionInvoker<String, String> fn = new ClientFunctionInvoker<>(rSocket, String.class, String.class);
 
-		Flux<Integer> input = Flux.just(1, 1, 1, 0, 0, 1, 1, 1);
-		Flux<Integer> output = fn.apply(input);
+		Flux<String> input = Flux.just("riff", "is", "for", "functions");
+		Flux<String> output = fn.apply(input);
 		output.log().subscribe(System.out::println);
 
 		System.in.read();

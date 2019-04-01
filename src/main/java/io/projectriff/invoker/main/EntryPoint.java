@@ -1,6 +1,6 @@
 package io.projectriff.invoker.main;
 
-import io.projectriff.invoker.server.JavaFunctionInvoker;
+import io.projectriff.invoker.serverside.JavaFunctionInvoker;
 
 import org.springframework.cloud.function.deployer.ApplicationBootstrap;
 
