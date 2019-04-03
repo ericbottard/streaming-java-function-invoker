@@ -23,7 +23,7 @@
 		<java.version>11</java.version>
 		<grpc.version>1.15.1</grpc.version>
 		<reactive-grpc.version>0.9.1-SNAPSHOT</reactive-grpc.version>
-		<spring.cloud.function.version>2.0.0.BUILD-SNAPSHOT</spring.cloud.function.version>
+		<spring.cloud.function.version>2.1.0.M1</spring.cloud.function.version>
 		<reactor.version>3.2.5.RELEASE</reactor.version>
 	</properties>
 
