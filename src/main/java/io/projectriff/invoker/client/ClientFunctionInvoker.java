@@ -144,8 +144,6 @@ public class ClientFunctionInvoker<T, R> implements Function<Flux<T>, Flux<R>> {
 				.create(URI.create("ws://kmprssr.default.35.241.251.246.nip.io/ws"));
 //		websocketClientTransport = WebsocketClientTransport
 //				.create(URI.create("ws://localhost:8080/ws"));
-		websocketClientTransport
-				.setTransportHeaders(() -> Collections.singletonMap("Authority", "kmprssr.default.35.241.251.246.nip.io"));
 
 		RSocket rSocket = RSocketFactory
 				.connect()
