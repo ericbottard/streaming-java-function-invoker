@@ -1,12 +1,17 @@
 package io.projectriff.invoker.server;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Flow;
 import java.util.function.Function;
 
 import io.projectriff.invoker.NextHttpInputMessage;
 import io.projectriff.invoker.NextHttpOutputMessage;
+import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
 
 import org.springframework.cloud.function.context.catalog.FunctionInspector;
@@ -45,6 +50,8 @@ public class ReactorServerAdapter extends ReactorRiffGrpc.RiffImplBase {
 
 	private List<HttpMessageConverter> converters = new ArrayList<>();
 
+	private MethodHandle mh;
+
 	public ReactorServerAdapter(Function fn, FunctionInspector fi) {
 		this.fn = fn;
 		this.fnInputType = ResolvableType.forClass(fi.getInputType(fn));
@@ -62,6 +69,15 @@ public class ReactorServerAdapter extends ReactorRiffGrpc.RiffImplBase {
 		ObjectToStringHttpMessageConverter oc = new ObjectToStringHttpMessageConverter(new DefaultConversionService());
 		oc.setWriteAcceptCharset(false);
 		converters.add(oc);
+
+		MethodType applyType = MethodType.methodType(Object.class, Object.class);
+		try {
+			mh = MethodHandles.publicLookup().findVirtual(fn.getClass(), "apply", applyType);
+		}
+		catch (NoSuchMethodException | IllegalAccessException e) {
+			throw new RuntimeException(e);
+		}
+		mh = mh.bindTo(fn);
 	}
 
 	@Override
@@ -76,7 +92,7 @@ public class ReactorServerAdapter extends ReactorRiffGrpc.RiffImplBase {
 								})
 								.map(NextHttpInputMessage::new)
 								.map(this::decode)
-								.transform(fn)
+								.transform(t())
 								.doOnError(e -> System.out.println("Seen it: " + e));
 						return transform
 								.map(encode(accept))
@@ -87,9 +103,21 @@ public class ReactorServerAdapter extends ReactorRiffGrpc.RiffImplBase {
 				});
 	}
 
+	private Function t() {
+		return f -> {
+			try {
+				return mh.invoke(f);
+			}
+			catch (Throwable e) {
+				throw new RuntimeException(e);
+			}
+		};
+	}
+
 	private Function<Object, NextHttpOutputMessage> encode(List<MediaType> accept) {
 		return o -> {
 			NextHttpOutputMessage out = new NextHttpOutputMessage();
+			out.getHeaders().set("RiffOutput", "0"); // Hardcode the fact that there is only one output for now
 			for (MediaType accepted : accept) {
 				for (HttpMessageConverter converter : converters) {
 					for (Object mt : converter.getSupportedMediaTypes()) {
