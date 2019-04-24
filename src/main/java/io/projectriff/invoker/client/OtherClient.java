@@ -26,7 +26,7 @@ public class OtherClient {
 
         Flux<Signal> request = Flux.concat(
                 Flux.just(start),
-                Flux.interval(Duration.ofMillis(5L)).map(i -> i).map(OtherClient::toSignal)
+                Flux.interval(Duration.ofMillis(500L)).map(i -> i / 5).map(OtherClient::toSignal)
         );
         Flux<Signal> response = stub.invoke(request.log("HELLO "));
 
