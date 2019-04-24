@@ -22,9 +22,10 @@
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 		<java.version>11</java.version>
 		<grpc.version>1.15.1</grpc.version>
-		<reactive-grpc.version>0.9.1-SNAPSHOT</reactive-grpc.version>
+		<reactive-grpc.version>0.10.0-RC1</reactive-grpc.version>
 		<spring.cloud.function.version>2.0.0.BUILD-SNAPSHOT</spring.cloud.function.version>
 		<reactor.version>3.2.5.RELEASE</reactor.version>
+		<protoc.version>3.6.1</protoc.version>
 	</properties>
 
 	<dependencies>
@@ -68,6 +69,11 @@
 			<version>${reactor.version}</version>
 		</dependency>
 		<dependency>
+			<groupId>io.projectreactor.addons</groupId>
+			<artifactId>reactor-extra</artifactId>
+			<version>3.2.2.RELEASE</version>
+		</dependency>
+		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-databind</artifactId>
 			<version>2.9.7</version>
@@ -78,6 +84,13 @@
 			<artifactId>spring-web</artifactId>
 			<version>5.1.5.RELEASE</version>
 		</dependency>
+
+		<dependency>
+			<groupId>ch.qos.logback</groupId>
+			<artifactId>logback-classic</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+
 		<dependency>
 			<groupId>javax.annotation</groupId>
 			<artifactId>jsr250-api</artifactId>
@@ -119,7 +132,7 @@
 				<artifactId>protobuf-maven-plugin</artifactId>
 				<version>0.5.1</version>
 				<configuration>
-					<protocArtifact>com.google.protobuf:protoc:3.5.1-1:exe:${os.detected.classifier}</protocArtifact>
+					<protocArtifact>com.google.protobuf:protoc:${protoc.version}:exe:${os.detected.classifier}</protocArtifact>
 					<pluginId>grpc-java</pluginId>
 					<pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}
 					</pluginArtifact>
@@ -128,7 +141,7 @@
 							<id>reactor-grpc</id>
 							<groupId>com.salesforce.servicelibs</groupId>
 							<artifactId>reactor-grpc</artifactId>
-							<version>0.9.0</version>
+							<version>${reactive-grpc.version}</version>
 							<mainClass>com.salesforce.reactorgrpc.ReactorGrpcGenerator</mainClass>
 						</protocPlugin>
 					</protocPlugins>
