@@ -14,6 +14,8 @@ import java.time.Duration;
 
 public class OtherClient {
 
+    private static final String[] numbers = new String[]{"zero", "one", "two", "three", "four", "five"};
+
     public static void main(String[] args) throws IOException {
         ManagedChannel channel = ManagedChannelBuilder.forAddress("localhost", 8080)
                 .usePlaintext()
@@ -24,24 +26,37 @@ public class OtherClient {
 
         Signal start = Signal.newBuilder().setStart(Start.newBuilder().setAccept("application/json").build()).build();
 
+        Flux<Signal> strings = Flux.interval(Duration.ofMillis(5000L)).map(i -> i).map(OtherClient::toSignalString);
+        Flux<Signal> ints = Flux.interval(Duration.ofMillis(6000L)).map(i -> i % numbers.length).map(OtherClient::toSignalInt);
+
         Flux<Signal> request = Flux.concat(
                 Flux.just(start),
-                Flux.interval(Duration.ofMillis(500L)).map(i -> i / 5).map(OtherClient::toSignal)
+                strings.mergeWith(ints)
         );
-        Flux<Signal> response = stub.invoke(request.log("HELLO "));
+        Flux<Signal> response = stub.invoke(request);
 
-        response.subscribe(System.out::println);
+        response.subscribe(s -> System.out.println(s.getNext().getPayload().toStringUtf8()));
         System.in.read();
 
 
     }
 
-    private static Signal toSignal(Long l) {
+    private static Signal toSignalString(Long l) {
+        return Signal.newBuilder()
+                .setNext(Next.newBuilder()
+                        .setPayload(ByteString.copyFromUtf8(numbers[l.intValue() % numbers.length]))
+                        .putHeaders("Content-Type", "text/plain")
+                        .putHeaders("RiffInput", "0")
+                )
+            .build();
+    }
+
+    private static Signal toSignalInt(Long l) {
         return Signal.newBuilder()
                 .setNext(Next.newBuilder()
                         .setPayload(ByteString.copyFromUtf8("" + l))
                         .putHeaders("Content-Type", "text/plain")
-                        .putHeaders("RiffInput", "0")
+                        .putHeaders("RiffInput", "1")
                 )
             .build();
     }
