@@ -72,8 +72,9 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 				.switchOnFirst((first, stream) -> {
 					if (first.hasValue() && first.get().hasStart()) {
 						List<MediaType> accept = MediaType.parseMediaTypes(first.get().getStart().getAccept());
-						return stream.skip(1L)
+						return stream
 								.doOnNext(System.out::println)
+//								.skip(1L)
 								.map(NextHttpInputMessage::new)
 								.map(this::decode)
 								.transform(t())

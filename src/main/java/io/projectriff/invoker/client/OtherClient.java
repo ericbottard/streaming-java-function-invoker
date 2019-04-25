@@ -26,14 +26,14 @@ public class OtherClient {
 
         Signal start = Signal.newBuilder().setStart(Start.newBuilder().setAccept("application/json").build()).build();
 
-        Flux<Signal> strings = Flux.interval(Duration.ofMillis(5000L)).map(i -> i).map(OtherClient::toSignalString);
+        Flux<Signal> strings = Flux.interval(Duration.ofMillis(5000L)).map(i -> i % numbers.length).map(OtherClient::toSignalString);
         Flux<Signal> ints = Flux.interval(Duration.ofMillis(6000L)).map(i -> i % numbers.length).map(OtherClient::toSignalInt);
 
         Flux<Signal> request = Flux.concat(
                 Flux.just(start),
                 strings.mergeWith(ints)
         );
-        Flux<Signal> response = stub.invoke(request);
+        Flux<Signal> response = stub.invoke(request.doOnNext(System.err::println));
 
         response.subscribe(s -> System.out.println(s.getNext().getPayload().toStringUtf8()));
         System.in.read();
@@ -44,7 +44,7 @@ public class OtherClient {
     private static Signal toSignalString(Long l) {
         return Signal.newBuilder()
                 .setNext(Next.newBuilder()
-                        .setPayload(ByteString.copyFromUtf8(numbers[l.intValue() % numbers.length]))
+                        .setPayload(ByteString.copyFromUtf8(numbers[l.intValue()]))
                         .putHeaders("Content-Type", "text/plain")
                         .putHeaders("RiffInput", "0")
                 )
