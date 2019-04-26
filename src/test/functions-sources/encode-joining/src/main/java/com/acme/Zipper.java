@@ -22,6 +22,9 @@ public class Zipper implements BiFunction<Flux<String>, Flux<Integer>, Flux<Stri
         })};
     }
 
+
+
+
     public static void main(String[] args) throws IOException {
         Flux<String> strings = Flux.interval(Duration.ofMillis(5000L)).map(i -> numbers[i.intValue() % numbers.length]);
         Flux<Integer> ints = Flux.interval(Duration.ofMillis(6000L)).map(i -> i.intValue() % numbers.length);

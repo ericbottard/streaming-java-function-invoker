@@ -31,9 +31,9 @@ public class OtherClient {
 
         Flux<Signal> request = Flux.concat(
                 Flux.just(start),
-                strings.mergeWith(ints)
+                strings.mergeWith(ints).doOnNext(r -> System.err.println(r.getNext().getPayload().toStringUtf8()))
         );
-        Flux<Signal> response = stub.invoke(request.doOnNext(System.err::println));
+        Flux<Signal> response = stub.invoke(request);
 
         response.subscribe(s -> System.out.println(s.getNext().getPayload().toStringUtf8()));
         System.in.read();

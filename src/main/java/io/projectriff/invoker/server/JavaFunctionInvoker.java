@@ -7,8 +7,11 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -23,10 +26,12 @@ import org.springframework.cloud.function.context.catalog.FunctionInspector;
 import org.springframework.cloud.function.deployer.EnableFunctionDeployer;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.ResolvableType;
 import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.ReflectionUtils;
+import reactor.core.publisher.Flux;
 
 /**
  * This class sets up all the necessary infrastructure for exposing a (streaming) function over riff gRPC protocol.
@@ -66,8 +71,6 @@ public class JavaFunctionInvoker {
 		}
 
 		public void run() throws Exception {
-			//Object function = applicationContext.getBean("function");
-			//Object function = Class.forName(System.getenv("FUNCTION_BEAN")).getDeclaredConstructor().newInstance();
 
 			Field processor1 = registry.getClass().getDeclaredField("processor");
 			processor1.setAccessible(true);
@@ -78,24 +81,12 @@ public class JavaFunctionInvoker {
 			Map map = (Map) registry.get(processor);
 
 			Object function = map.keySet().iterator().next();
-			System.out.println("WOOOOOOOOOOT " + function);
 
-			Set<Class<?>> functionalInterfaces = ClassUtils.getAllInterfacesAsSet(function).stream()
-					.filter(i -> AnnotationUtils.isAnnotationDeclaredLocally(FunctionalInterface.class, i))
-					.collect(Collectors.toSet());
-			if (functionalInterfaces.size() == 0) {
-				throw new RuntimeException("Could not find any function");
-			}
-			else if (functionalInterfaces.size() > 1) {
-				throw new RuntimeException("Too many functional interfaces implemented: " + functionalInterfaces);
-			}
-			Method m = functionalInterfaces.iterator().next().getDeclaredMethods()[0];
 
-			MethodType applyType = MethodType.methodType(Object.class, Object.class);
-			MethodHandle mh = MethodHandles.publicLookup().unreflect(m);
-			mh = mh.bindTo(function);
 
-			ReactorServerAdapter adapter = new ReactorServerAdapter(mh, fi);
+			Method m = new FunctionalInterfaceMethodResolver().resolve(function);
+
+			ReactorServerAdapter adapter = new ReactorServerAdapter(function, m, fi);
 			server = ServerBuilder.forPort(8080).addService(adapter).build();
 			server.start();
 		}

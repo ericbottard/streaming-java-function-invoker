@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -48,12 +49,28 @@ import reactor.util.function.Tuples;
  */
 public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 
+	public static final ResolvableType FLUX_TYPE = ResolvableType.forClassWithGenerics(Flux.class, Object.class);
+
 	private List<HttpMessageConverter> converters = new ArrayList<>();
 
 	private MethodHandle mh;
 
-	public ReactorServerAdapter(MethodHandle mh, FunctionInspector fi) {
+	private Class<?>[] inputTypes;
+
+	public ReactorServerAdapter(Object function, Method m, FunctionInspector fi) throws IllegalAccessException {
+		MethodHandle mh = MethodHandles.publicLookup().unreflect(m);
+		mh = mh.bindTo(function);
 		this.mh = mh;
+
+		inputTypes = new Class[m.getParameterCount()];
+		for (int i = 0; i < m.getParameterCount(); i++) {
+			ResolvableType type = ResolvableType.forMethodParameter(m, i);
+//			if (!type.isAssignableFrom(FLUX_TYPE)) {
+//				throw new RuntimeException("Expected parameter of type Flux at position " + i + ": " + m);
+//			}
+			inputTypes[i] = type.resolveGeneric(0);
+		}
+
 
 		converters.add(new MappingJackson2HttpMessageConverter());
 		converters.add(new FormHttpMessageConverter());
@@ -180,15 +197,7 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 		MediaType contentType = m.getHeaders().getContentType();
 		Integer riffInput = Integer.valueOf(m.getHeaders().getFirst("RiffInput"));
 
-        var type = mh.type().parameterType(riffInput);
-		if (riffInput == 0) {
-			type = String.class;
-		}
-		else if (riffInput == 1) {
-			type = Integer.class;
-		} else {
-			throw new UnsupportedOperationException();
-		}
+		var type = inputTypes[riffInput];
 
 		for (HttpMessageConverter converter : converters) {
 			if (converter.canRead(type, contentType)) {
