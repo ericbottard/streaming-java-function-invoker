@@ -72,6 +72,18 @@ public class JavaFunctionInvoker {
 
 		public void run() throws Exception {
 
+			Object function = lookupFunction();
+
+
+			Method m = new FunctionalInterfaceMethodResolver().resolve(function);
+
+			ReactorServerAdapter adapter = new ReactorServerAdapter(function, m, fi);
+
+			server = ServerBuilder.forPort(8080).addService(adapter).build();
+			server.start();
+		}
+
+		private Object lookupFunction() throws NoSuchFieldException, IllegalAccessException {
 			Field processor1 = registry.getClass().getDeclaredField("processor");
 			processor1.setAccessible(true);
 			Object processor = processor1.get(registry);
@@ -80,15 +92,7 @@ public class JavaFunctionInvoker {
 			registry.setAccessible(true);
 			Map map = (Map) registry.get(processor);
 
-			Object function = map.keySet().iterator().next();
-
-
-
-			Method m = new FunctionalInterfaceMethodResolver().resolve(function);
-
-			ReactorServerAdapter adapter = new ReactorServerAdapter(function, m, fi);
-			server = ServerBuilder.forPort(8080).addService(adapter).build();
-			server.start();
+			return map.keySet().iterator().next();
 		}
 
 		public void close() {
