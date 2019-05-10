@@ -6,6 +6,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
@@ -14,9 +15,11 @@ import io.projectriff.invoker.NextHttpInputMessage;
 import io.projectriff.invoker.NextHttpOutputMessage;
 import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscription;
+import reactor.core.Exceptions;
 import reactor.core.publisher.BaseSubscriber;
 import reactor.core.publisher.DirectProcessor;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.GroupedFlux;
 import reactor.util.function.Tuple2;
 import reactor.util.function.Tuples;
 
@@ -90,12 +93,14 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 						List<MediaType> accept = MediaType.parseMediaTypes(first.get().getStart().getAccept());
 						return stream
 								.doOnNext(m -> System.err.println("STEP1 " + m))
-								// .skip(1L)
+								.skip(1L)
+								.doOnNext(m -> System.err.println("STEP1.5 " + m))
 								.map(NextHttpInputMessage::new)
 								.doOnNext(m -> System.err.println("STEP2 " + m))
 								.map(this::decode)
 								.doOnNext(m -> System.err.println("STEP3 " + m))
 								.transform(t())
+								.doOnError(Throwable::printStackTrace)
 								.doOnNext(m -> System.err.println("STEP4 " + m))
 								.map(encode(accept))
 								.doOnNext(m -> System.err.println("STEP5 " + m))
@@ -110,6 +115,33 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 
 	@SuppressWarnings("unchecked")
 	private Function<Flux<Tuple2<Object, Integer>>, Publisher<Tuple2<Object, Integer>>> t() {
+
+		Tuple2<Object, Integer>[] startTuples = new Tuple2[mh.type().parameterCount()];
+		for (int i = 0; i < startTuples.length; i++) {
+			startTuples[i] = Tuples.of(new Object(), i);
+		}
+
+		return f -> f.startWith(Flux.fromArray(startTuples))
+				.groupBy(Tuple2::getT2, Tuple2::getT1)
+				.take(startTuples.length)
+				.collectSortedList(Comparator.comparingInt(GroupedFlux::key))
+				.flatMapMany(groups -> {
+					try {
+						Object[] args = groups.stream().map(g -> g.skip(1)).toArray(Object[]::new);
+						Flux<Object>[] bareOutputs = (Flux<Object>[]) mh.invokeWithArguments(args);
+						Flux<Tuple2<Object, Integer>>[] withOutputIndices =new Flux[bareOutputs.length];
+						for (int i = 0; i < bareOutputs.length; i++) {
+							int j = i;
+							withOutputIndices[i] = bareOutputs[i].map(o -> Tuples.of(o, j));
+						}
+						return Flux.merge(withOutputIndices);
+					} catch (Throwable t) {
+						throw Exceptions.propagate(t);
+					}
+				});
+
+
+		/*
 
 		DirectProcessor[] processors = new DirectProcessor[mh.type().parameterCount()];
 		BaseSubscriber<Tuple2<Object, Integer>> inSub = new BaseSubscriber<>() {
@@ -167,6 +199,8 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 			}
 
 		};
+
+		*/
 	}
 
 	private Function<Tuple2<Object, Integer>, NextHttpOutputMessage> encode(List<MediaType> accept) {
