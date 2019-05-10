@@ -57,13 +57,17 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 
 	private MethodHandle mh;
 
-	private Class<?>[] inputTypes;
+    private ResolvableType outputType;
+
+    private Class<?>[] inputTypes;
+
 
 	public ReactorServerAdapter(Object function, Method m, FunctionInspector fi) throws IllegalAccessException {
 		MethodHandle mh = MethodHandles.publicLookup().unreflect(m);
 		mh = mh.bindTo(function);
 		this.mh = mh;
 
+		outputType = ResolvableType.forMethodReturnType(m);
 		inputTypes = new Class[m.getParameterCount()];
 		for (int i = 0; i < m.getParameterCount(); i++) {
 			ResolvableType type = ResolvableType.forMethodParameter(m, i);
@@ -186,8 +190,14 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 			f.subscribe(inSub);
 			try {
 				Object[] os = fluxes;
-				Flux[] results = (Flux[]) mh.invokeWithArguments(Arrays.asList(os));
-				for (int i = 0; i < results.length; i++) {
+                Object result = mh.invokeWithArguments(Arrays.asList(os));
+                Flux[] results;
+                if (outputType.isArray()) {
+                    results = (Flux[]) result;
+                } else {
+                    results = new Flux[] {(Flux<?>) result};
+                }
+                for (int i = 0; i < results.length; i++) {
 					var ii = i;
 					results[i] = results[i].map(o -> Tuples.of(o, ii));
 				}
