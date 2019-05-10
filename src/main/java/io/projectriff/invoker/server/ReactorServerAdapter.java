@@ -3,11 +3,11 @@ package io.projectriff.invoker.server;
 import java.io.IOException;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 import io.projectriff.invoker.NextHttpInputMessage;
@@ -17,6 +17,8 @@ import org.reactivestreams.Subscription;
 import reactor.core.publisher.BaseSubscriber;
 import reactor.core.publisher.DirectProcessor;
 import reactor.core.publisher.Flux;
+import reactor.util.function.Tuple2;
+import reactor.util.function.Tuples;
 
 import org.springframework.cloud.function.context.catalog.FunctionInspector;
 import org.springframework.core.ResolvableType;
@@ -30,9 +32,6 @@ import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.http.converter.ObjectToStringHttpMessageConverter;
 import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
-
-import reactor.util.function.Tuple2;
-import reactor.util.function.Tuples;
 
 /**
  * A reactive gRPC adapter that adapts a user function (with reactive signature) and makes
@@ -65,12 +64,12 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 		inputTypes = new Class[m.getParameterCount()];
 		for (int i = 0; i < m.getParameterCount(); i++) {
 			ResolvableType type = ResolvableType.forMethodParameter(m, i);
-//			if (!type.isAssignableFrom(FLUX_TYPE)) {
-//				throw new RuntimeException("Expected parameter of type Flux at position " + i + ": " + m);
-//			}
+			// if (!type.isAssignableFrom(FLUX_TYPE)) {
+			// throw new RuntimeException("Expected parameter of type Flux at position " + i + ": " +
+			// m);
+			// }
 			inputTypes[i] = type.resolveGeneric(0);
 		}
-
 
 		converters.add(new MappingJackson2HttpMessageConverter());
 		converters.add(new FormHttpMessageConverter());
@@ -90,14 +89,19 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 					if (first.hasValue() && first.get().hasStart()) {
 						List<MediaType> accept = MediaType.parseMediaTypes(first.get().getStart().getAccept());
 						return stream
-								.doOnNext(System.out::println)
-//								.skip(1L)
+								.doOnNext(m -> System.err.println("STEP1 " + m))
+								// .skip(1L)
 								.map(NextHttpInputMessage::new)
+								.doOnNext(m -> System.err.println("STEP2 " + m))
 								.map(this::decode)
+								.doOnNext(m -> System.err.println("STEP3 " + m))
 								.transform(t())
-								.doOnError(e -> System.out.println("Seen it: " + e))
+								.doOnNext(m -> System.err.println("STEP4 " + m))
 								.map(encode(accept))
+								.doOnNext(m -> System.err.println("STEP5 " + m))
 								.map(NextHttpOutputMessage::asSignal)
+								.doOnNext(m -> System.err.println("STEP6 " + m))
+								.doOnNext(m -> System.err.println("STEP7 " + m))
 								.doOnError(Throwable::printStackTrace);
 					}
 					return Flux.error(new RuntimeException("Expected first frame to be of type Start"));
@@ -142,9 +146,8 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 		Flux[] fluxes = new Flux[processors.length];
 
 		for (int i = 0; i < processors.length; i++) {
-			fluxes[i] = processors[i]/*
-										 * .onBackpressureBuffer() .doOnRequest(inSub::request)
-										 */;
+			fluxes[i] = processors[i]
+					.onBackpressureBuffer().doOnRequest(inSub::request);
 		}
 
 		return f -> {
