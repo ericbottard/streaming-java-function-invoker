@@ -33,19 +33,31 @@ public class FunctionalInterfaceMethodResolver implements FunctionMethodResolver
         else if (functionalInterfaces.size() > 1) {
             throw new RuntimeException("Too many functional interfaces implemented: " + functionalInterfaces);
         }
-        Method fMethod = functionalInterfaces.iterator().next().getDeclaredMethods()[0];
+        AtomicReference<Method> refOnFunctionInterface = new AtomicReference<>();
+        Class<?> functionalInterface = functionalInterfaces.iterator().next();
+        ReflectionUtils.doWithLocalMethods(functionalInterface, m -> {
+            if (!m.isBridge() && !m.isSynthetic() && !m.isDefault()) {
+                if (!refOnFunctionInterface.compareAndSet(null, m)) {
+                    throw new RuntimeException("More than one matching method");
+                };
+            }
+        });
 
-        AtomicReference<Method> ref = new AtomicReference<>();
-        ReflectionUtils.doWithMethods(target.getClass(), me -> ref.set(me),
-                overridesMethod(fMethod));
+        AtomicReference<Method> refActual = new AtomicReference<>();
+        ReflectionUtils.doWithMethods(target.getClass(), me -> refActual.set(me),
+                overridesMethod(refOnFunctionInterface.get()));
 
-        return ref.get();
+        return refActual.get();
     }
 
     private ReflectionUtils.MethodFilter overridesMethod(Method fMethod) {
-        return me -> me.getName().equals(fMethod.getName())
-                && !me.isBridge() && !me.isSynthetic()
-                && me.getParameterCount() == fMethod.getParameterCount()
-                ;
+        System.out.println("fMethod = " + fMethod);
+        return me -> {
+            boolean b = me.getName().equals(fMethod.getName())
+                    && !me.isBridge() && !me.isSynthetic()
+                    && me.getParameterCount() == fMethod.getParameterCount();
+            System.out.println("Considering " + me + " => " + b);
+            return b;
+        };
     }
 }
