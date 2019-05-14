@@ -127,7 +127,7 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 				.collectSortedList(Comparator.comparingInt(GroupedFlux::key))
 				.flatMapMany(groups -> {
 					try {
-						Object[] args = groups.stream().map(g -> g.skip(1)).toArray(Object[]::new);
+						Object[] args = groups.stream().map(g -> g.skip(1).publish()).toArray(Object[]::new);
 						Flux<Object>[] bareOutputs = (Flux<Object>[]) mh.invokeWithArguments(args);
 						Flux<Tuple2<Object, Integer>>[] withOutputIndices =new Flux[bareOutputs.length];
 						for (int i = 0; i < bareOutputs.length; i++) {
