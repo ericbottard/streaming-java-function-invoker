@@ -7,6 +7,7 @@ import org.springframework.util.ReflectionUtils;
 import reactor.core.publisher.Flux;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.Set;
@@ -36,7 +37,7 @@ public class FunctionalInterfaceMethodResolver implements FunctionMethodResolver
         AtomicReference<Method> refOnFunctionInterface = new AtomicReference<>();
         Class<?> functionalInterface = functionalInterfaces.iterator().next();
         ReflectionUtils.doWithLocalMethods(functionalInterface, m -> {
-            if (!m.isBridge() && !m.isSynthetic() && !m.isDefault()) {
+            if (!m.isBridge() && !m.isSynthetic() && !m.isDefault() && Modifier.isAbstract(m.getModifiers())) {
                 if (!refOnFunctionInterface.compareAndSet(null, m)) {
                     throw new RuntimeException("More than one matching method");
                 };
