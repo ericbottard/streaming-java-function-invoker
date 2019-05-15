@@ -96,8 +96,8 @@ public class ClientFunctionInvoker<T, R> implements Function<Flux<T>, Flux<R>> {
 				Flux.just(start),
 				input.map(this::convertToSignal) //
 		);
-		Flux<Signal> response = stub.invoke(request);
-		return response.map(this::convertFromSignal);
+
+		return stub.invoke(request).map(this::convertFromSignal);
 	}
 
 	private R convertFromSignal(Signal signal) {

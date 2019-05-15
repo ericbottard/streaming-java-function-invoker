@@ -27,11 +27,11 @@ public class NextHttpOutputMessage implements HttpOutputMessage {
 		}
 
 		public Signal asSignal() {
-			return Signal.newBuilder().setNext(
-					Next.newBuilder()
-							.setPayload(output.toByteString())
-							.putAllHeaders(headers.toSingleValueMap()))
-					.build();
+			Next.Builder next = Next.newBuilder()
+					.setPayload(output.toByteString())
+					.putAllHeaders(headers.toSingleValueMap())
+					.putHeaders("RiffInput", "0");
+			return Signal.newBuilder().setNext(next).build();
 		}
 
 	}
