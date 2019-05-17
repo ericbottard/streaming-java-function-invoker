@@ -93,33 +93,41 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 	public Flux<Signal> invoke(Flux<Signal> request) {
 		return request
 				.switchOnFirst((first, stream) -> {
-					if (first.hasValue() && first.get().hasStart()) {
-						List<MediaType> accept = MediaType.parseMediaTypes(first.get().getStart().getAccept());
-						return stream
-								.doOnNext(m -> System.err.println("STEP1 " + m))
-								.skip(1L)
-								.doOnNext(m -> System.err.println("STEP1.5 " + m))
-								.map(NextHttpInputMessage::new)
-								.doOnNext(m -> System.err.println("STEP2 " + m))
-								.map(this::decode)
-								.doOnNext(m -> System.err.println("STEP3 " + m))
-								.transform(t())
-								.doOnError(Throwable::printStackTrace)
-								.doOnNext(m -> System.err.println("STEP4 " + m))
-								.map(encode(accept))
-								.doOnNext(m -> System.err.println("STEP5 " + m))
-								.map(NextHttpOutputMessage::asSignal)
-								.doOnNext(m -> System.err.println("STEP6 " + m))
-								.doOnNext(m -> System.err.println("STEP7 " + m))
-								.doOnError(Throwable::printStackTrace);
+					if (!first.hasValue()) {
+						return Flux.error(new RuntimeException("Expected first frame to be of type Start"));
 					}
-					return Flux.error(new RuntimeException("Expected first frame to be of type Start"));
+					Signal firstSignal = first.get();
+					if (!firstSignal.hasStart()) {
+						return Flux.error(new RuntimeException("Expected first frame to be of type Start"));
+					}
+
+					Tuple2<Object, Integer>[] startTuples = new Tuple2[mh.type().parameterCount()];
+					for (int i = 0; i < startTuples.length; i++) {
+						startTuples[i] = Tuples.of(new Object(), i);
+					}
+
+					List<MediaType> accept = MediaType.parseMediaTypes(firstSignal.getStart().getAccept());
+					return stream
+							.doOnNext(m -> System.err.println("STEP1 " + m))
+							.skip(1L)
+							.doOnNext(m -> System.err.println("STEP1.5 " + m))
+							.map(NextHttpInputMessage::new)
+							.doOnNext(m -> System.err.println("STEP2 " + m))
+							.map(this::decode)
+							.doOnNext(m -> System.err.println("STEP3 " + m))
+							.transform(t())
+							.doOnNext(m -> System.err.println("STEP4 " + m))
+							.map(encode(accept))
+							.doOnNext(m -> System.err.println("STEP5 " + m))
+							.map(NextHttpOutputMessage::asSignal)
+							.doOnNext(m -> System.err.println("STEP6 " + m))
+							.doOnNext(m -> System.err.println("STEP7 " + m))
+							.doOnError(Throwable::printStackTrace);
 				});
 	}
 
 	@SuppressWarnings("unchecked")
 	private Function<Flux<Tuple2<Object, Integer>>, Publisher<Tuple2<Object, Integer>>> t() {
-
 		Tuple2<Object, Integer>[] startTuples = new Tuple2[mh.type().parameterCount()];
 		for (int i = 0; i < startTuples.length; i++) {
 			startTuples[i] = Tuples.of(new Object(), i);
@@ -131,7 +139,7 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 				.collectSortedList(Comparator.comparingInt(GroupedFlux::key))
 				.flatMapMany(groups -> {
 					try {
-						Object[] args = groups.stream().map(g -> g.skip(1).publish()).toArray(Object[]::new);
+						Object[] args = groups.stream().map(g -> g.skip(1)).toArray(Object[]::new);
 						Flux<Object>[] bareOutputs = (Flux<Object>[]) mh.invokeWithArguments(args);
 						Flux<Tuple2<Object, Integer>>[] withOutputIndices =new Flux[bareOutputs.length];
 						for (int i = 0; i < bareOutputs.length; i++) {
@@ -201,8 +209,7 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 					var ii = i;
 					results[i] = results[i].map(o -> Tuples.of(o, ii));
 				}
-				Flux merged = Flux.merge(results);
-				return merged;
+				return Flux.merge(results);
 			}
 			catch (Throwable e) {
 				throw new RuntimeException(e);
