@@ -37,7 +37,7 @@ public class FunctionalInterfaceMethodResolver implements FunctionMethodResolver
         AtomicReference<Method> refOnFunctionInterface = new AtomicReference<>();
         Class<?> functionalInterface = functionalInterfaces.iterator().next();
         ReflectionUtils.doWithLocalMethods(functionalInterface, m -> {
-            if (!m.isBridge() && !m.isSynthetic() && !m.isDefault() && Modifier.isAbstract(m.getModifiers())) {
+            if (!m.isBridge() && !m.isSynthetic() && !m.isDefault() && !Modifier.isStatic(m.getModifiers())) {
                 if (!refOnFunctionInterface.compareAndSet(null, m)) {
                     throw new RuntimeException("More than one matching method");
                 };
