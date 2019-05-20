@@ -5,25 +5,19 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 import io.projectriff.invoker.NextHttpInputMessage;
 import io.projectriff.invoker.NextHttpOutputMessage;
 import org.reactivestreams.Publisher;
-import org.reactivestreams.Subscription;
 import reactor.core.Exceptions;
-import reactor.core.publisher.BaseSubscriber;
-import reactor.core.publisher.DirectProcessor;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.GroupedFlux;
 import reactor.util.function.Tuple2;
 import reactor.util.function.Tuples;
 
-import org.springframework.cloud.function.context.catalog.FunctionInspector;
 import org.springframework.core.ResolvableType;
 import org.springframework.core.convert.support.DefaultConversionService;
 import org.springframework.http.HttpInputMessage;
@@ -62,21 +56,13 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
     private Class<?>[] inputTypes;
 
 
-	public ReactorServerAdapter(Object function, Method m, FunctionInspector fi) throws IllegalAccessException {
+	public ReactorServerAdapter(Object function, Method m, Class[] types) throws IllegalAccessException {
 		MethodHandle mh = MethodHandles.publicLookup().unreflect(m);
 		mh = mh.bindTo(function);
 		this.mh = mh;
 
 		outputType = ResolvableType.forMethodReturnType(m);
-		inputTypes = new Class[m.getParameterCount()];
-		for (int i = 0; i < m.getParameterCount(); i++) {
-			ResolvableType type = ResolvableType.forMethodParameter(m, i);
-			// if (!type.isAssignableFrom(FLUX_TYPE)) {
-			// throw new RuntimeException("Expected parameter of type Flux at position " + i + ": " +
-			// m);
-			// }
-			inputTypes[i] = type.resolveGeneric(0);
-		}
+		inputTypes = types;
 
 		converters.add(new MappingJackson2HttpMessageConverter());
 		converters.add(new FormHttpMessageConverter());
@@ -140,7 +126,13 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 				.flatMapMany(groups -> {
 					try {
 						Object[] args = groups.stream().map(g -> g.skip(1)).toArray(Object[]::new);
-						Flux<Object>[] bareOutputs = (Flux<Object>[]) mh.invokeWithArguments(args);
+						Object result =  mh.invokeWithArguments(args);
+						Flux<?>[] bareOutputs = new Flux<?>[1];
+						if (result.getClass().isArray()) {
+							bareOutputs = (Flux<?>[]) result;
+						} else {
+							bareOutputs[0] = (Flux<?>) result;
+						}
 						Flux<Tuple2<Object, Integer>>[] withOutputIndices =new Flux[bareOutputs.length];
 						for (int i = 0; i < bareOutputs.length; i++) {
 							int j = i;
