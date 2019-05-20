@@ -3,16 +3,19 @@ package io.projectriff.invoker.server;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.deployer.resource.maven.MavenProperties;
+import org.springframework.cloud.deployer.resource.support.DelegatingResourceLoader;
 import org.springframework.cloud.function.context.FunctionRegistry;
-import org.springframework.cloud.function.context.catalog.FunctionInspector;
-import org.springframework.cloud.function.core.IsolatedFunction;
 import org.springframework.cloud.function.deployer.EnableFunctionDeployer;
-import org.springframework.context.annotation.Bean;
+import org.springframework.cloud.function.deployer.FunctionDeployerConfiguration;
+import org.springframework.cloud.function.deployer.FunctionProperties;
+import org.springframework.context.ApplicationContextInitializer;
+import org.springframework.context.support.GenericApplicationContext;
+import org.springframework.util.ClassUtils;
 
-import java.lang.reflect.Field;
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import java.lang.reflect.Method;
-import java.util.Map;
-import java.util.Optional;
 
 /**
  * This class sets up all the necessary infrastructure for exposing a (streaming) function over riff gRPC protocol.
@@ -24,59 +27,78 @@ import java.util.Optional;
  */
 @SpringBootApplication
 @EnableFunctionDeployer
-public class JavaFunctionInvoker {
+//@EnableWebMvc
+public class JavaFunctionInvoker
+        implements ApplicationContextInitializer<GenericApplicationContext> {
 
-	/*
-	 * Exposes an object capable of running a gRPC server with the function.
-	 * Startup is done in an init method to work around late initialization needs of the function deployer.
-	 */
-	@Bean(initMethod = "run", destroyMethod = "close")
-	public Runner runner(FunctionInspector fi, FunctionRegistry registry) {
-		return new Runner(fi, registry);
+//    @Bean
+//    public HackyFunctionResolver functionResolver(FunctionRegistry functionRegistry) {
+//        return new HackyFunctionResolver(functionRegistry);
+//    }
 
-	}
 
-	private static class Runner {
+    /*
+     * Exposes an object capable of running a gRPC server with the function.
+     * Startup is done in an init method to work around late initialization needs of the function deployer.
+     */
+//    @Bean(initMethod = "run", destroyMethod = "close")
+//    public Runner runner(HackyFunctionResolver resolver) {
+//        return new Runner(resolver);
+//    }
 
-		private final FunctionInspector fi;
+    @Override
+    public void initialize(GenericApplicationContext genericApplicationContext) {
+        genericApplicationContext.registerBean(Runner.class,
+                () -> new Runner(new HackyFunctionResolver(genericApplicationContext.getBean(FunctionRegistry.class))));
+        genericApplicationContext.registerBean(FunctionDeployerConfiguration.class, FunctionDeployerConfiguration::new);
+        genericApplicationContext.registerBean(
+                "org.springframework.cloud.function.deployer.FunctionCreatorConfiguration",
+                ClassUtils.resolveClassName(
+                        "org.springframework.cloud.function.deployer.FunctionCreatorConfiguration",
+                        genericApplicationContext.getClassLoader()));
+        genericApplicationContext.registerBean(
+                MavenProperties.class, () -> genericApplicationContext
+                        .getBean(FunctionDeployerConfiguration.class).mavenProperties(),
+                def -> {
+                    def.setFactoryBeanName(FunctionDeployerConfiguration.class.getName());
+                    def.setFactoryMethodName("mavenProperties");
+                });
+        genericApplicationContext.registerBean(FunctionProperties.class, () -> genericApplicationContext
+                        .getBean(FunctionDeployerConfiguration.class).functionProperties(),
+                def -> {
+                    def.setFactoryBeanName(FunctionDeployerConfiguration.class.getName());
+                    def.setFactoryMethodName("functionProperties");
+                });
+        genericApplicationContext.registerBean(DelegatingResourceLoader.class,
+                () -> genericApplicationContext.getBean(FunctionDeployerConfiguration.class)
+                        .delegatingResourceLoader(
+                                genericApplicationContext.getBean(MavenProperties.class)));
+    }
 
-		private final FunctionRegistry registry;
+    private static class Runner {
 
-		private Server server;
+        private final HackyFunctionResolver resolver;
 
-		Runner(FunctionInspector fi, FunctionRegistry registry) {
-			this.fi = fi;
-			this.registry = registry;
-		}
+        private Server server;
 
-		public void run() throws Exception {
-			Object function = lookupFunction();
-			Method m = new FunctionalInterfaceMethodResolver().resolve(function);
-			ReactorServerAdapter adapter = new ReactorServerAdapter(function, m, fi);
+        Runner(HackyFunctionResolver resolver) {
+            this.resolver = resolver;
+        }
 
-			server = ServerBuilder.forPort(8080).addService(adapter).build();
-			server.start();
-		}
+        @PostConstruct
+        public void run() throws Exception {
+            Object function = resolver.resolveFunction();
+            Method m = new FunctionalInterfaceMethodResolver().resolve(function);
+            ReactorServerAdapter adapter = new ReactorServerAdapter(function, m);
 
-		private Object lookupFunction() throws NoSuchFieldException, IllegalAccessException {
-			Field processor1 = registry.getClass().getDeclaredField("processor");
-			processor1.setAccessible(true);
-			Object processor = processor1.get(registry);
+            server = ServerBuilder.forPort(9090).addService(adapter).build();
+            server.start();
+        }
 
-			Field registry = processor.getClass().getDeclaredField("names");
-			registry.setAccessible(true);
-			Map<?, ?> map = (Map) registry.get(processor);
+        @PreDestroy
+        public void close() {
+            server.shutdown();
+        }
 
-			Optional<?> result = map.keySet().stream()
-					.filter(f -> !(f instanceof IsolatedFunction<?, ?>))
-					.findFirst();
-			return result.get();
-		}
-
-		public void close() {
-			server.shutdown();
-		}
-
-	}
-
+    }
 }

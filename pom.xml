@@ -23,10 +23,22 @@
 		<java.version>11</java.version>
 		<grpc.version>1.15.1</grpc.version>
 		<reactive-grpc.version>0.10.0-RC1</reactive-grpc.version>
-		<spring.cloud.function.version>2.0.0.BUILD-SNAPSHOT</spring.cloud.function.version>
+		<spring-cloud-function.version>2.0.0.BUILD-SNAPSHOT</spring-cloud-function.version>
 		<reactor.version>3.2.5.RELEASE</reactor.version>
 		<protoc.version>3.6.1</protoc.version>
 	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.cloud</groupId>
+				<artifactId>spring-cloud-function-dependencies</artifactId>
+				<version>${spring-cloud-function.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 
 	<dependencies>
 		<dependency>
@@ -47,7 +59,6 @@
 		<dependency>
 			<groupId>org.springframework.cloud</groupId>
 			<artifactId>spring-cloud-function-deployer</artifactId>
-			<version>${spring.cloud.function.version}</version>
 			<!--
 			<exclusions>
 				<exclusion>
@@ -56,6 +67,24 @@
 				</exclusion>
 			</exclusions>
 			-->
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.cloud</groupId>
+			<artifactId>spring-cloud-function-web</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webflux</artifactId>
+			<exclusions>
+				<exclusion>
+					<groupId>org.springframework.boot</groupId>
+					<artifactId>spring-boot-starter-logging</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>org.hibernate</groupId>
+					<artifactId>hibernate-validator</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 		<dependency>
 			<groupId>com.salesforce.servicelibs</groupId>
@@ -78,11 +107,6 @@
 			<artifactId>jackson-databind</artifactId>
 			<version>2.9.8</version>
 			<scope>runtime</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework</groupId>
-			<artifactId>spring-web</artifactId>
-			<version>5.1.7.RELEASE</version>
 		</dependency>
 
 		<dependency>

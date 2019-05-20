@@ -199,13 +199,13 @@ public class IntegrationTest {
     private ManagedChannel connect() throws InterruptedException {
         for (int i = 0; i < 20; i++) {
             try {
-                new Socket().connect(new InetSocketAddress("localhost", 8080));
+                new Socket().connect(new InetSocketAddress("localhost", 9090));
                 break;
             } catch (IOException e) {
                 Thread.sleep(500);
             }
         }
-        channel = ManagedChannelBuilder.forAddress("localhost", 8080)
+        channel = ManagedChannelBuilder.forAddress("localhost", 9090)
                 .usePlaintext()
                 .build();
         return channel;
