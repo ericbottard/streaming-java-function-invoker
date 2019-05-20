@@ -1,25 +1,14 @@
 package io.projectriff.invoker;
 
-import java.io.File;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
-
 import com.google.protobuf.ByteString;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.projectriff.invoker.client.ClientFunctionInvoker;
+import io.projectriff.invoker.client.FunctionProxy;
 import io.projectriff.invoker.server.Next;
-import io.projectriff.invoker.server.ReactorRiffGrpc;
 import io.projectriff.invoker.server.Signal;
-import io.projectriff.invoker.server.Start;
 import org.hamcrest.CoreMatchers;
 import org.junit.After;
 import org.junit.Before;
@@ -28,11 +17,16 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestName;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.GroupedFlux;
-import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
-import reactor.util.function.Tuple2;
-import reactor.util.function.Tuples;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 
@@ -74,10 +68,8 @@ public class IntegrationTest {
     @Before
     public void prepareProcess() {
         processBuilder = new ProcessBuilder(javaExecutable, "-jar", invokerJar);
-        processBuilder
-                .redirectOutput(new File(String.format("target%s%s.out", File.separator, testName.getMethodName())));
-        processBuilder
-                .redirectError(new File(String.format("target%s%s.err", File.separator, testName.getMethodName())));
+        processBuilder.redirectOutput(new File(String.format("target%s%s.out", File.separator, testName.getMethodName())));
+        processBuilder.redirectError(new File(String.format("target%s%s.err", File.separator, testName.getMethodName())));
         processBuilder.environment().clear();
         processBuilder.environment().put("PATH", System.getenv("PATH"));
     }
@@ -98,10 +90,12 @@ public class IntegrationTest {
         setFunctionBean("com.acme.Encode");
         process = processBuilder.start();
 
-        ClientFunctionInvoker<Integer, Integer> fn = new ClientFunctionInvoker<>(connect(), Integer.class, Integer.class);
+        Function<Flux<Integer>, Flux<?>[]> fn = FunctionProxy.create(Function.class, connect(), Integer.class, Integer.class);
 
-        Flux<Integer> response = fn.apply(Flux.just(1, 1, 1, 0, 0, 0, 0, 1, 1));
-        StepVerifier.create(response)
+        Flux<?>[] result = fn.apply(Flux.just(1, 1, 1, 0, 0, 0, 0, 1, 1));
+
+        assertThat(result.length, CoreMatchers.equalTo(1));
+        StepVerifier.create((Flux<Integer>) result[0])
                 .expectNext(3, 1)
                 .expectNext(4, 0)
                 .expectNext(2, 1)
@@ -118,35 +112,26 @@ public class IntegrationTest {
         setFunctionBean("com.acme.Repeater");
         process = processBuilder.start();
 
-        Signal start = Signal.newBuilder().setStart(Start.newBuilder().setAccept("text/plain").build()).build();
-        Flux<String> strings = Flux.just("one", "two", "three");
-        Flux<Integer> ints = Flux.just(1, 2, 3, 4, 5, 6);
+        BiFunction<Flux<String>, Flux<Integer>, Flux<?>[]> fn = FunctionProxy.create(BiFunction.class, connect(), String.class, Integer.class);
 
-        Flux<Signal> request = Flux.concat(
-                Flux.just(start),
-                Flux.merge(strings.map(s -> inputSignal(s, 0)), ints.map(i -> inputSignal(i.toString(), 1)))
+        Flux<?>[] result = fn.apply(
+                Flux.just("one", "two", "three"),
+                Flux.just(1, 2, 3, 4, 5, 6)
         );
 
-        List<Flux<Tuple2<Integer, String>>> result = ReactorRiffGrpc.newReactorStub(connect()).invoke(request)
-                .groupBy((s) -> Integer.parseInt(s.getNext().getHeadersOrThrow("RiffOutput")))
-                .sort(Comparator.comparing(GroupedFlux::key))
-                .map(g -> g.map(s -> Tuples.of(g.key(), s.getNext().getPayload().toStringUtf8())))
-                .collectList()
-                .block();
-
-        assertThat(result.size(), CoreMatchers.equalTo(2));
-        StepVerifier.create(result.get(0))
-                .expectNext(Tuples.of(0, "one"))
-                .expectNext(Tuples.of(0, "two"))
-                .expectNext(Tuples.of(0, "two"))
-                .expectNext(Tuples.of(0, "three"))
-                .expectNext(Tuples.of(0, "three"))
-                .expectNext(Tuples.of(0, "three"))
+        assertThat(result.length, CoreMatchers.equalTo(2));
+        StepVerifier.create((Flux<String>) result[0])
+                .expectNext("one")
+                .expectNext("two")
+                .expectNext("two")
+                .expectNext("three")
+                .expectNext("three")
+                .expectNext("three")
                 .verifyComplete();
-        StepVerifier.create(result.get(1))
-                .expectNext(Tuples.of(1, "3"))
-                .expectNext(Tuples.of(1, "5"))
-                .expectNext(Tuples.of(1, "7"))
+        StepVerifier.create((Flux<Integer>) result[1])
+                .expectNext(3)
+                .expectNext(5)
+                .expectNext(7)
                 .verifyComplete();
     }
 
@@ -154,7 +139,6 @@ public class IntegrationTest {
      * This tests a function that doesn't require special types and is packaged as a plain old
      * jar.
      */
-
     @Test
     public void testSimplestJarFunction() throws Exception {
         setFunctionLocation("hundred-divider-1.0.0");
@@ -169,10 +153,10 @@ public class IntegrationTest {
                 .verifyComplete();
 
     }
+
     /*
      * This tests the client triggering an onError() event.
      */
-
     @Test
     public void testClientError() throws Exception {
         setFunctionLocation("hundred-divider-1.0.0");
@@ -189,10 +173,10 @@ public class IntegrationTest {
                 .verifyErrorMatches(t -> (t instanceof StatusRuntimeException) && ((StatusRuntimeException) t).getStatus().getCode() == Status.Code.CANCELLED);
 
     }
+
     /*
      * This tests a runtime error happening in the function computation.
      */
-
     @Test
     public void testFunctionError() throws Exception {
         setFunctionLocation("hundred-divider-1.0.0");

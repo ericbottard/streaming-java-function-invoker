@@ -41,7 +41,9 @@ import org.springframework.http.converter.json.MappingJackson2HttpMessageConvert
  * </p>
  *
  * @author Eric Bottard
+ * @deprecated use {@code FunctionProxy} instead
  */
+@Deprecated
 public class ClientFunctionInvoker<T, R> implements Function<Flux<T>, Flux<R>> {
 
 	private final ReactorRiffGrpc.ReactorRiffStub stub;

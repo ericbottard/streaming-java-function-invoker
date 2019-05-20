@@ -2,13 +2,11 @@ package io.projectriff.invoker.server;
 
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.function.context.FunctionRegistry;
 import org.springframework.cloud.function.context.catalog.FunctionInspector;
 import org.springframework.cloud.function.core.IsolatedFunction;
 import org.springframework.cloud.function.deployer.EnableFunctionDeployer;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 
 import java.lang.reflect.Field;

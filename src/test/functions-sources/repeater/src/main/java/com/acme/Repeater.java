@@ -19,8 +19,8 @@ public class Repeater implements BiFunction<Flux<String>, Flux<Integer>, Flux<?>
         Flux<String> repeated = stringFlux.zipWith(sharedIntFlux)
                 .flatMap(t -> Flux.fromIterable(Collections.nCopies(t.getT2(), t.getT1())));
 
-        Flux<String> sum = sharedIntFlux.buffer(2, 1)
-                .map(l -> "" + l.stream().mapToInt(Integer::intValue).sum())
+        Flux<Integer> sum = sharedIntFlux.buffer(2, 1)
+                .map(l -> l.stream().mapToInt(Integer::intValue).sum())
                 .take(3);
 
         return new Flux<?>[]{repeated, sum};
