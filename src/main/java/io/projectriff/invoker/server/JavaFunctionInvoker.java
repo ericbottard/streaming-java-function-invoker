@@ -3,25 +3,16 @@ package io.projectriff.invoker.server;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.netty.bootstrap.ServerBootstrap;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.handler.codec.http.DefaultFullHttpResponse;
-import io.netty.handler.codec.http.HttpContent;
-import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpRequestDecoder;
 import io.netty.handler.codec.http.HttpResponseEncoder;
-import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -29,10 +20,7 @@ import org.springframework.cloud.function.context.FunctionRegistry;
 import org.springframework.cloud.function.deployer.EnableFunctionDeployer;
 import org.springframework.context.annotation.Bean;
 
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
-import java.nio.charset.StandardCharsets;
 
 /**
  * This class sets up all the necessary infrastructure for exposing a (streaming) function over riff gRPC protocol.
@@ -106,8 +94,6 @@ public class JavaFunctionInvoker {
         public void run() throws Exception {
             Object function = resolver.resolveFunction();
             Method m = new FunctionalInterfaceMethodResolver().resolve(function);
-            MethodHandle mh = MethodHandles.publicLookup().unreflect(m);
-            mh = mh.bindTo(function);
 
             // Configure the server.
             EventLoopGroup bossGroup = new NioEventLoopGroup(1);
@@ -116,7 +102,7 @@ public class JavaFunctionInvoker {
             b.group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
                     .handler(new LoggingHandler(LogLevel.INFO))
-                    .childHandler(new CustomChannelInitializer(new MethodHandler(mh)));
+                    .childHandler(new CustomChannelInitializer(new HttpServerHandler(m, function)));
 
             Channel ch = b.bind(PORT).sync().channel();
 
@@ -125,9 +111,9 @@ public class JavaFunctionInvoker {
     }
 
     private static class CustomChannelInitializer extends ChannelInitializer<SocketChannel> {
-        private final MethodHandler methodHandler;
+        private final HttpServerHandler methodHandler;
 
-        public CustomChannelInitializer(JavaFunctionInvoker.MethodHandler methodHandler) {
+        public CustomChannelInitializer(HttpServerHandler methodHandler) {
             this.methodHandler = methodHandler;
         }
 
@@ -136,41 +122,9 @@ public class JavaFunctionInvoker {
             ChannelPipeline pipeline = socketChannel.pipeline();
             pipeline.addLast(new HttpRequestDecoder());
             pipeline.addLast(new HttpResponseEncoder());
+            pipeline.addLast(new HttpObjectAggregator(Integer.MAX_VALUE));
             pipeline.addLast(methodHandler);
         }
     }
 
-    private static class MethodHandler extends SimpleChannelInboundHandler<Object> {
-
-        private final MethodHandle methodHandle;
-
-        public MethodHandler(MethodHandle methodHandle) {
-            this.methodHandle = methodHandle;
-        }
-
-        @Override
-        protected void channelRead0(ChannelHandlerContext channelHandlerContext, Object msg) throws Exception {
-            if (msg instanceof HttpContent) {
-                ByteBuf content = ((HttpContent) msg).content();
-                // TODO: methodHandle.invokeWithArguments
-            }
-            if (msg instanceof HttpRequest) {
-                // TODO ((HttpRequest) msg).???
-            }
-
-            DefaultFullHttpResponse response = new DefaultFullHttpResponse(
-                    HttpVersion.HTTP_1_1,
-                    HttpResponseStatus.OK,
-                    Unpooled.copiedBuffer("hello world", StandardCharsets.UTF_8));
-
-            channelHandlerContext.write(response);
-            channelHandlerContext.writeAndFlush(Unpooled.EMPTY_BUFFER).addListener(ChannelFutureListener.CLOSE);
-        }
-
-        @Override
-        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-            cause.printStackTrace();
-            ctx.close();
-        }
-    }
 }
