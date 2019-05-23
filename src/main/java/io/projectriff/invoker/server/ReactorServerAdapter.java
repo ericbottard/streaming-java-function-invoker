@@ -1,16 +1,25 @@
 package io.projectriff.invoker.server;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
-import io.projectriff.invoker.NextHttpInputMessage;
-import io.projectriff.invoker.NextHttpOutputMessage;
+import com.google.protobuf.ProtocolStringList;
+import io.projectriff.invoker.HttpMessageUtils;
+import io.projectriff.invoker.InputSignalHttpInputMessage;
+import io.projectriff.invoker.SignalHttpOutputMessage;
+import io.projectriff.invoker.rpc.InputSignal;
+import io.projectriff.invoker.rpc.OutputSignal;
+import io.projectriff.invoker.rpc.ReactorRiffGrpc;
 import org.reactivestreams.Publisher;
 import reactor.core.Exceptions;
 import reactor.core.publisher.Flux;
@@ -18,40 +27,32 @@ import reactor.core.publisher.GroupedFlux;
 import reactor.util.function.Tuple2;
 import reactor.util.function.Tuples;
 
-import org.springframework.core.ResolvableType;
-import org.springframework.core.convert.support.DefaultConversionService;
 import org.springframework.http.HttpInputMessage;
 import org.springframework.http.MediaType;
-import org.springframework.http.converter.FormHttpMessageConverter;
-import org.springframework.http.converter.HttpMessageConverter;
-import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.http.converter.HttpMessageNotWritableException;
-import org.springframework.http.converter.ObjectToStringHttpMessageConverter;
-import org.springframework.http.converter.StringHttpMessageConverter;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.http.converter.*;
+
+import static io.projectriff.invoker.HttpMessageUtils.RIFF_INPUT;
+import static io.projectriff.invoker.HttpMessageUtils.RIFF_OUTPUT;
 
 /**
  * A reactive gRPC adapter that adapts a user function (with reactive signature) and makes
  * it invokable via the riff rpc protocol.
  *
  * <p>
- * This adapter reads the first signal, remembering the client's {@code Accept}'ed types,
+ * This adapter reads the first signal, remembering the client's {@code expectedContentTypes},
  * then marshalls and un-marshalls input and output of the function, according to a set of
  * pre-defined {@link HttpMessageConverter} or injected ones if present in the application
- * context.
+ * context (TODO).
  * </p>
  *
  * @author Eric Bottard
+ * @author Florent Biville
  */
 public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
-
-	public static final ResolvableType FLUX_TYPE = ResolvableType.forClassWithGenerics(Flux.class, Object.class);
 
 	private List<HttpMessageConverter> converters = new ArrayList<>();
 
 	private MethodHandle mh;
-
-    private ResolvableType outputType;
 
     private Class<?>[] inputTypes;
 
@@ -61,53 +62,33 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 		mh = mh.bindTo(function);
 		this.mh = mh;
 
-		outputType = ResolvableType.forMethodReturnType(m);
 		inputTypes = types;
+		System.out.println("TYPES = " + Arrays.asList(types));
 
-		converters.add(new MappingJackson2HttpMessageConverter());
-		converters.add(new FormHttpMessageConverter());
-		StringHttpMessageConverter sc = new StringHttpMessageConverter();
-		sc.setWriteAcceptCharset(false);
-		converters.add(sc);
-		ObjectToStringHttpMessageConverter oc = new ObjectToStringHttpMessageConverter(new DefaultConversionService());
-		oc.setWriteAcceptCharset(false);
-		converters.add(oc);
-
+		HttpMessageUtils.installDefaultConverters(converters);
 	}
 
 	@Override
-	public Flux<Signal> invoke(Flux<Signal> request) {
+	public Flux<OutputSignal> invoke(Flux<InputSignal> request) {
 		return request
 				.switchOnFirst((first, stream) -> {
 					if (!first.hasValue()) {
 						return Flux.error(new RuntimeException("Expected first frame to be of type Start"));
 					}
-					Signal firstSignal = first.get();
+					InputSignal firstSignal = first.get();
 					if (!firstSignal.hasStart()) {
 						return Flux.error(new RuntimeException("Expected first frame to be of type Start"));
 					}
 
-					Tuple2<Object, Integer>[] startTuples = new Tuple2[mh.type().parameterCount()];
-					for (int i = 0; i < startTuples.length; i++) {
-						startTuples[i] = Tuples.of(new Object(), i);
-					}
-
-					List<MediaType> accept = MediaType.parseMediaTypes(firstSignal.getStart().getAccept());
+					ProtocolStringList expectedContentTypesList = firstSignal.getStart().getExpectedContentTypesList();
+					List<List<MediaType>> accept = expectedContentTypesList.stream().map(MediaType::parseMediaTypes).collect(Collectors.toList());
 					return stream
-							.doOnNext(m -> System.err.println("STEP1 " + m))
 							.skip(1L)
-							.doOnNext(m -> System.err.println("STEP1.5 " + m))
-							.map(NextHttpInputMessage::new)
-							.doOnNext(m -> System.err.println("STEP2 " + m))
+							.map(InputSignalHttpInputMessage::new)
 							.map(this::decode)
-							.doOnNext(m -> System.err.println("STEP3 " + m))
 							.transform(t())
-							.doOnNext(m -> System.err.println("STEP4 " + m))
 							.map(encode(accept))
-							.doOnNext(m -> System.err.println("STEP5 " + m))
-							.map(NextHttpOutputMessage::asSignal)
-							.doOnNext(m -> System.err.println("STEP6 " + m))
-							.doOnNext(m -> System.err.println("STEP7 " + m))
+							.map(SignalHttpOutputMessage::asOutputSignal)
 							.doOnError(Throwable::printStackTrace);
 				});
 	}
@@ -127,12 +108,7 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 					try {
 						Object[] args = groups.stream().map(g -> g.skip(1)).toArray(Object[]::new);
 						Object result =  mh.invokeWithArguments(args);
-						Flux<?>[] bareOutputs = new Flux<?>[1];
-						if (result.getClass().isArray()) {
-							bareOutputs = (Flux<?>[]) result;
-						} else {
-							bareOutputs[0] = (Flux<?>) result;
-						}
+						Flux<?>[] bareOutputs = promoteToArray(result);
 						Flux<Tuple2<Object, Integer>>[] withOutputIndices =new Flux[bareOutputs.length];
 						for (int i = 0; i < bareOutputs.length; i++) {
 							int j = i;
@@ -143,81 +119,26 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 						throw Exceptions.propagate(t);
 					}
 				});
-
-
-		/*
-
-		DirectProcessor[] processors = new DirectProcessor[mh.type().parameterCount()];
-		BaseSubscriber<Tuple2<Object, Integer>> inSub = new BaseSubscriber<>() {
-			@Override
-			protected void hookOnSubscribe(Subscription subscription) {
-				System.out.println(subscription);
-				super.hookOnSubscribe(subscription);
-			}
-
-			@Override
-			protected void hookOnNext(Tuple2<Object, Integer> value) {
-				processors[value.getT2()].onNext(value.getT1());
-			}
-
-			@Override
-			protected void hookOnComplete() {
-				for (DirectProcessor p : processors) {
-					p.onComplete();
-				}
-			}
-
-			@Override
-			protected void hookOnError(Throwable throwable) {
-				for (DirectProcessor p : processors) {
-					p.onError(throwable);
-				}
-			}
-		};
-
-		for (int i = 0; i < processors.length; i++) {
-			processors[i] = DirectProcessor.create();
-		}
-
-		Flux[] fluxes = new Flux[processors.length];
-
-		for (int i = 0; i < processors.length; i++) {
-			fluxes[i] = processors[i]
-					.onBackpressureBuffer().doOnRequest(inSub::request);
-		}
-
-		return f -> {
-			f.subscribe(inSub);
-			try {
-				Object[] os = fluxes;
-                Object result = mh.invokeWithArguments(Arrays.asList(os));
-                Flux[] results;
-                if (outputType.isArray()) {
-                    results = (Flux[]) result;
-                } else {
-                    results = new Flux[] {(Flux<?>) result};
-                }
-                for (int i = 0; i < results.length; i++) {
-					var ii = i;
-					results[i] = results[i].map(o -> Tuples.of(o, ii));
-				}
-				return Flux.merge(results);
-			}
-			catch (Throwable e) {
-				throw new RuntimeException(e);
-			}
-
-		};
-
-		*/
 	}
 
-	private Function<Tuple2<Object, Integer>, NextHttpOutputMessage> encode(List<MediaType> accept) {
+	private Flux<?>[] promoteToArray(Object result) {
+		Flux<?>[] bareOutputs = new Flux<?>[1];
+		if (result.getClass().isArray()) {
+			bareOutputs = (Flux<?>[]) result;
+		} else {
+			bareOutputs[0] = (Flux<?>) result;
+		}
+		return bareOutputs;
+	}
+
+	private Function<Tuple2<Object, Integer>, SignalHttpOutputMessage> encode(List<List<MediaType>> expectedContentTypesList) {
 		return t -> {
-			NextHttpOutputMessage out = new NextHttpOutputMessage();
-			out.getHeaders().set("RiffOutput", t.getT2().toString());
+			Integer index = t.getT2();
 			Object o = t.getT1();
-			for (MediaType accepted : accept) {
+			SignalHttpOutputMessage out = new SignalHttpOutputMessage();
+			out.getHeaders().set(RIFF_OUTPUT, index.toString());
+			List<MediaType> expectedContentTypes = expectedContentTypesList.get(index);
+			for (MediaType accepted : expectedContentTypes) {
 				for (HttpMessageConverter converter : converters) {
 					for (Object mt : converter.getSupportedMediaTypes()) {
 						MediaType mediaType = (MediaType) mt;
@@ -234,14 +155,14 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 				}
 			}
 			throw new HttpMessageNotWritableException(
-					String.format("could not find converter for accept = '%s' and return value of type %s", accept,
+					String.format("could not find converter for accept = '%s' and return value of type %s", expectedContentTypesList,
 							o.getClass()));
 		};
 	}
 
 	private Tuple2<Object, Integer> decode(HttpInputMessage m) {
 		MediaType contentType = m.getHeaders().getContentType();
-		Integer riffInput = Integer.valueOf(m.getHeaders().getFirst("RiffInput"));
+		Integer riffInput = Integer.valueOf(m.getHeaders().getFirst(RIFF_INPUT));
 
 		var type = inputTypes[riffInput];
 
