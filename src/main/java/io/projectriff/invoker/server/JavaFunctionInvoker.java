@@ -17,6 +17,7 @@ import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.function.context.FunctionRegistry;
+import org.springframework.cloud.function.context.catalog.FunctionInspector;
 import org.springframework.cloud.function.deployer.EnableFunctionDeployer;
 import org.springframework.context.annotation.Bean;
 
@@ -35,8 +36,8 @@ import java.lang.reflect.Method;
 public class JavaFunctionInvoker {
 
     @Bean
-    public HackyFunctionResolver functionResolver(FunctionRegistry functionRegistry) {
-        return new HackyFunctionResolver(functionRegistry);
+    public HackyFunctionResolver functionResolver(FunctionRegistry functionRegistry, FunctionInspector fi) {
+        return new HackyFunctionResolver(functionRegistry, fi);
     }
 
     /*
@@ -70,9 +71,10 @@ public class JavaFunctionInvoker {
         public void run() throws Exception {
             Object function = resolver.resolveFunction();
             Method m = new FunctionalInterfaceMethodResolver().resolve(function);
-            ReactorServerAdapter adapter = new ReactorServerAdapter(function, m);
+            Class[] types = resolver.resolveInputTypes(function, m);
+            ReactorServerAdapter adapter = new ReactorServerAdapter(function, m, types);
 
-            server = ServerBuilder.forPort(9090).addService(adapter).build();
+            server = ServerBuilder.forPort(8081).addService(adapter).build();
             server.start();
         }
 
@@ -94,6 +96,7 @@ public class JavaFunctionInvoker {
         public void run() throws Exception {
             Object function = resolver.resolveFunction();
             Method m = new FunctionalInterfaceMethodResolver().resolve(function);
+            Class[] types = resolver.resolveInputTypes(function, m);
 
             // Configure the server.
             EventLoopGroup bossGroup = new NioEventLoopGroup(1);
@@ -102,7 +105,7 @@ public class JavaFunctionInvoker {
             b.group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
                     .handler(new LoggingHandler(LogLevel.INFO))
-                    .childHandler(new CustomChannelInitializer(new HttpServerHandler(m, function)));
+                    .childHandler(new CustomChannelInitializer(new HttpServerHandler(m, function, types)));
 
             Channel ch = b.bind(PORT).sync().channel();
 

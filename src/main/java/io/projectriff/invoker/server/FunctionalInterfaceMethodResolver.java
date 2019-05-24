@@ -52,12 +52,12 @@ public class FunctionalInterfaceMethodResolver implements FunctionMethodResolver
     }
 
     private ReflectionUtils.MethodFilter overridesMethod(Method fMethod) {
-        System.out.println("fMethod = " + fMethod);
+        //System.out.println("fMethod = " + fMethod);
         return me -> {
             boolean b = me.getName().equals(fMethod.getName())
                     && !me.isBridge() && !me.isSynthetic()
                     && me.getParameterCount() == fMethod.getParameterCount();
-            System.out.println("Considering " + me + " => " + b);
+            //System.out.println("Considering " + me + " => " + b);
             return b;
         };
     }
