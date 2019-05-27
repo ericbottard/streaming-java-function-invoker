@@ -4,8 +4,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 import com.google.protobuf.ByteString;
-import io.projectriff.invoker.server.Next;
-import io.projectriff.invoker.server.Signal;
+import io.projectriff.invoker.rpc.OutputFrame;
+import io.projectriff.invoker.rpc.OutputSignal;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpOutputMessage;
@@ -26,12 +26,15 @@ public class NextHttpOutputMessage implements HttpOutputMessage {
 			return headers;
 		}
 
-		public Signal asSignal() {
-			Next.Builder next = Next.newBuilder()
+		public OutputSignal asSignal() {
+			OutputFrame.Builder data = OutputFrame.newBuilder()
 					.setPayload(output.toByteString())
 					.putAllHeaders(headers.toSingleValueMap())
-					.putHeaders("RiffInput", "0");
-			return Signal.newBuilder().setNext(next).build();
+					.setContentType(headers.getContentType().toString())
+					.removeHeaders("Content-Type")
+					.setResultIndex(Integer.parseInt(headers.getFirst("RiffOuput")))
+					.removeHeaders("RiffOutput");
+			return OutputSignal.newBuilder().setData(data).build();
 		}
 
 	}

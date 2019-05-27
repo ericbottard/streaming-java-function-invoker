@@ -8,6 +8,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.google.protobuf.ProtocolStringList;
 import io.projectriff.invoker.NextHttpInputMessage;
@@ -22,40 +24,25 @@ import reactor.core.publisher.GroupedFlux;
 import reactor.util.function.Tuple2;
 import reactor.util.function.Tuples;
 
-import org.springframework.cloud.function.context.catalog.FunctionInspector;
-import org.springframework.core.ResolvableType;
 import org.springframework.core.convert.support.DefaultConversionService;
 import org.springframework.http.HttpInputMessage;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.*;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
-import reactor.core.Exceptions;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.GroupedFlux;
-import reactor.util.function.Tuple2;
-import reactor.util.function.Tuples;
-
-import java.io.IOException;
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.function.Function;
 
 /**
  * A reactive gRPC adapter that adapts a user function (with reactive signature) and makes
  * it invokable via the riff rpc protocol.
  *
  * <p>
- * This adapter reads the first signal, remembering the client's {@code Accept}'ed types,
+ * This adapter reads the first signal, remembering the client's {@code expectedContentTypes},
  * then marshalls and un-marshalls input and output of the function, according to a set of
  * pre-defined {@link HttpMessageConverter} or injected ones if present in the application
  * context (TODO).
  * </p>
  *
  * @author Eric Bottard
+ * @author Florent Biville
  */
 public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 
@@ -102,22 +89,14 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 					}
 
 					ProtocolStringList expectedContentTypesList = firstSignal.getStart().getExpectedContentTypesList();
-					List<MediaType> accept = MediaType.parseMediaTypes(expectedContentTypesList);
+					List<List<MediaType>> accept = expectedContentTypesList.stream().map(MediaType::parseMediaTypes).collect(Collectors.toList());
 					return stream
-							.doOnNext(m -> System.err.println("STEP1 " + m))
 							.skip(1L)
-							.doOnNext(m -> System.err.println("STEP1.5 " + m))
 							.map(NextHttpInputMessage::new)
-							.doOnNext(m -> System.err.println("STEP2 " + m))
 							.map(this::decode)
-							.doOnNext(m -> System.err.println("STEP3 " + m))
 							.transform(t())
-							.doOnNext(m -> System.err.println("STEP4 " + m))
 							.map(encode(accept))
-							.doOnNext(m -> System.err.println("STEP5 " + m))
 							.map(NextHttpOutputMessage::asSignal)
-							.doOnNext(m -> System.err.println("STEP6 " + m))
-							.doOnNext(m -> System.err.println("STEP7 " + m))
 							.doOnError(Throwable::printStackTrace);
 				});
 	}
@@ -155,12 +134,14 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 				});
 	}
 
-	private Function<Tuple2<Object, Integer>, NextHttpOutputMessage> encode(List<MediaType> accept) {
+	private Function<Tuple2<Object, Integer>, NextHttpOutputMessage> encode(List<List<MediaType>> expectedContentTypesList) {
 		return t -> {
-			NextHttpOutputMessage out = new NextHttpOutputMessage();
-			out.getHeaders().set("RiffOutput", t.getT2().toString());
+			Integer index = t.getT2();
 			Object o = t.getT1();
-			for (MediaType accepted : accept) {
+			NextHttpOutputMessage out = new NextHttpOutputMessage();
+			out.getHeaders().set("RiffOutput", index.toString());
+			List<MediaType> expectedContentTypes = expectedContentTypesList.get(index);
+			for (MediaType accepted : expectedContentTypes) {
 				for (HttpMessageConverter converter : converters) {
 					for (Object mt : converter.getSupportedMediaTypes()) {
 						MediaType mediaType = (MediaType) mt;
@@ -177,7 +158,7 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 				}
 			}
 			throw new HttpMessageNotWritableException(
-					String.format("could not find converter for accept = '%s' and return value of type %s", accept,
+					String.format("could not find converter for accept = '%s' and return value of type %s", expectedContentTypesList,
 							o.getClass()));
 		};
 	}

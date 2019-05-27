@@ -3,28 +3,33 @@ package io.projectriff.invoker;
 import java.io.IOException;
 import java.io.InputStream;
 
-import io.projectriff.invoker.server.Signal;
+import io.projectriff.invoker.rpc.InputFrame;
+import io.projectriff.invoker.rpc.InputSignal;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpInputMessage;
+import org.springframework.http.MediaType;
 
 public class NextHttpInputMessage implements HttpInputMessage {
 
-	private final Signal signal;
+	private final InputSignal signal;
 
-	public NextHttpInputMessage(Signal signal) {
+	public NextHttpInputMessage(InputSignal signal) {
 		this.signal = signal;
 	}
 
 	@Override
 	public InputStream getBody() throws IOException {
-		return signal.getNext().getPayload().newInput();
+		return signal.getData().getPayload().newInput();
 	}
 
 	@Override
 	public HttpHeaders getHeaders() {
 		HttpHeaders headers = new HttpHeaders();
-		signal.getNext().getHeadersMap().forEach((k, v) -> headers.set(k, v));
+		InputFrame data = signal.getData();
+		data.getHeadersMap().forEach((k, v) -> headers.set(k, v));
+		headers.set("RiffInput", ""+ data.getArgIndex());
+		headers.setContentType(MediaType.parseMediaType(data.getContentType()));
 		return headers;
 	}
 }
