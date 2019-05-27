@@ -5,15 +5,16 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import com.google.protobuf.ProtocolStringList;
-import io.projectriff.invoker.NextHttpInputMessage;
-import io.projectriff.invoker.NextHttpOutputMessage;
+import io.projectriff.invoker.HttpMessageUtils;
+import io.projectriff.invoker.InputSignalHttpInputMessage;
+import io.projectriff.invoker.SignalHttpOutputMessage;
 import io.projectriff.invoker.rpc.InputSignal;
 import io.projectriff.invoker.rpc.OutputSignal;
 import io.projectriff.invoker.rpc.ReactorRiffGrpc;
@@ -24,11 +25,12 @@ import reactor.core.publisher.GroupedFlux;
 import reactor.util.function.Tuple2;
 import reactor.util.function.Tuples;
 
-import org.springframework.core.convert.support.DefaultConversionService;
 import org.springframework.http.HttpInputMessage;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.*;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+
+import static io.projectriff.invoker.HttpMessageUtils.RIFF_INPUT;
+import static io.projectriff.invoker.HttpMessageUtils.RIFF_OUTPUT;
 
 /**
  * A reactive gRPC adapter that adapts a user function (with reactive signature) and makes
@@ -59,16 +61,9 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 		this.mh = mh;
 
 		inputTypes = types;
+		System.out.println("TYPES = " + Arrays.asList(types));
 
-		converters.add(new MappingJackson2HttpMessageConverter());
-		converters.add(new FormHttpMessageConverter());
-		StringHttpMessageConverter sc = new StringHttpMessageConverter();
-		sc.setWriteAcceptCharset(false);
-		converters.add(sc);
-		ObjectToStringHttpMessageConverter oc = new ObjectToStringHttpMessageConverter(new DefaultConversionService());
-		oc.setWriteAcceptCharset(false);
-		converters.add(oc);
-
+		HttpMessageUtils.installDefaultConverters(converters);
 	}
 
 	@Override
@@ -92,11 +87,11 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 					List<List<MediaType>> accept = expectedContentTypesList.stream().map(MediaType::parseMediaTypes).collect(Collectors.toList());
 					return stream
 							.skip(1L)
-							.map(NextHttpInputMessage::new)
+							.map(InputSignalHttpInputMessage::new)
 							.map(this::decode)
 							.transform(t())
 							.map(encode(accept))
-							.map(NextHttpOutputMessage::asSignal)
+							.map(SignalHttpOutputMessage::asOutputSignal)
 							.doOnError(Throwable::printStackTrace);
 				});
 	}
@@ -134,12 +129,12 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 				});
 	}
 
-	private Function<Tuple2<Object, Integer>, NextHttpOutputMessage> encode(List<List<MediaType>> expectedContentTypesList) {
+	private Function<Tuple2<Object, Integer>, SignalHttpOutputMessage> encode(List<List<MediaType>> expectedContentTypesList) {
 		return t -> {
 			Integer index = t.getT2();
 			Object o = t.getT1();
-			NextHttpOutputMessage out = new NextHttpOutputMessage();
-			out.getHeaders().set("RiffOutput", index.toString());
+			SignalHttpOutputMessage out = new SignalHttpOutputMessage();
+			out.getHeaders().set(RIFF_OUTPUT, index.toString());
 			List<MediaType> expectedContentTypes = expectedContentTypesList.get(index);
 			for (MediaType accepted : expectedContentTypes) {
 				for (HttpMessageConverter converter : converters) {
@@ -165,7 +160,7 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 
 	private Tuple2<Object, Integer> decode(HttpInputMessage m) {
 		MediaType contentType = m.getHeaders().getContentType();
-		Integer riffInput = Integer.valueOf(m.getHeaders().getFirst("RiffInput"));
+		Integer riffInput = Integer.valueOf(m.getHeaders().getFirst(RIFF_INPUT));
 
 		var type = inputTypes[riffInput];
 

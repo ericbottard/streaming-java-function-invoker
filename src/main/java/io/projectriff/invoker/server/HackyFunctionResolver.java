@@ -39,6 +39,7 @@ public class HackyFunctionResolver {
                 .filter(HackyFunctionResolver::isFluxifying)
                 .findFirst()
                 .get();
+        System.out.println("Amongst " + map.toString().replace(",", "\n"));
         System.out.println("Electing: " + o);
         return o;
     }
@@ -69,6 +70,9 @@ public class HackyFunctionResolver {
         }
         if (fn instanceof FluxFunction) {
             return true;
+        }
+        if (fn instanceof IsolatedFunction) {
+            return false;
         }
         Method m = new FunctionalInterfaceMethodResolver().resolve(fn);
         return m.getParameterTypes()[0].isAssignableFrom(Flux.class);

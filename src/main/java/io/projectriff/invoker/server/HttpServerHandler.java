@@ -3,35 +3,24 @@ package io.projectriff.invoker.server;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.ByteBufOutputStream;
-import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
-import io.netty.handler.codec.http.DefaultHttpRequest;
 import io.netty.handler.codec.http.FullHttpRequest;
-import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
-import org.springframework.core.ResolvableType;
-import org.springframework.core.convert.support.DefaultConversionService;
+import io.projectriff.invoker.HttpMessageUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpInputMessage;
 import org.springframework.http.HttpOutputMessage;
 import org.springframework.http.MediaType;
-import org.springframework.http.converter.FormHttpMessageConverter;
-import org.springframework.http.converter.HttpMessageConversionException;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.converter.HttpMessageNotWritableException;
-import org.springframework.http.converter.ObjectToStringHttpMessageConverter;
-import org.springframework.http.converter.StringHttpMessageConverter;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
@@ -40,7 +29,6 @@ import java.io.OutputStream;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -59,18 +47,7 @@ class HttpServerHandler extends SimpleChannelInboundHandler<Object> {
 		this.methodHandle = methodHandle.bindTo(function);
 		this.inputTypes = types;
 
-		installConverters();
-	}
-
-	private void installConverters() {
-		converters.add(new MappingJackson2HttpMessageConverter());
-		converters.add(new FormHttpMessageConverter());
-		StringHttpMessageConverter sc = new StringHttpMessageConverter();
-		sc.setWriteAcceptCharset(false);
-		converters.add(sc);
-		ObjectToStringHttpMessageConverter oc = new ObjectToStringHttpMessageConverter(new DefaultConversionService());
-		oc.setWriteAcceptCharset(false);
-		converters.add(oc);
+		HttpMessageUtils.installDefaultConverters(converters);
 	}
 
 	@Override

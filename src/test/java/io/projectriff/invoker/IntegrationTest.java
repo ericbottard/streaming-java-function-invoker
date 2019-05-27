@@ -1,20 +1,13 @@
 package io.projectriff.invoker;
 
-import com.google.protobuf.ByteString;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.projectriff.invoker.client.ClientFunctionInvoker;
 import io.projectriff.invoker.client.FunctionProxy;
-import io.projectriff.invoker.server.Next;
-import io.projectriff.invoker.server.Signal;
 import org.hamcrest.CoreMatchers;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.rules.TestName;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
@@ -90,7 +83,7 @@ public class IntegrationTest {
         setFunctionBean("com.acme.Encode");
         process = processBuilder.start();
 
-        Function<Flux<Integer>, Flux<?>[]> fn = FunctionProxy.create(Function.class, connect(), Integer.class, Integer.class);
+        Function<Flux<Integer>, Flux<?>[]> fn = FunctionProxy.create(Function.class, connect(), Integer.class);
 
         Flux<?>[] result = fn.apply(Flux.just(1, 1, 1, 0, 0, 0, 0, 1, 1));
 
@@ -218,13 +211,6 @@ public class IntegrationTest {
     private void setFunctionLocation(String jar) {
         processBuilder.environment().put("FUNCTION_LOCATION",
                 "file://" + new File(String.format("src/test/functions/%s.jar", jar)).getAbsolutePath());
-    }
-
-    private Signal inputSignal(String s, int inputIndex) {
-        return Signal.newBuilder().setNext(Next.newBuilder()
-                .putHeaders("RiffInput", "" + inputIndex)
-                .putHeaders("Content-Type", "text/plain")
-                .setPayload(ByteString.copyFromUtf8(s))).build();
     }
 
 }

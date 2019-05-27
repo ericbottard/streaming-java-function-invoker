@@ -1,31 +1,24 @@
 package io.projectriff.invoker.client;
 
 import io.grpc.ManagedChannel;
-import io.projectriff.invoker.NextHttpInputMessage;
-import io.projectriff.invoker.NextHttpOutputMessage;
-import io.projectriff.invoker.server.FunctionalInterfaceMethodResolver;
-import io.projectriff.invoker.server.Next;
-import io.projectriff.invoker.server.ReactorRiffGrpc;
-import io.projectriff.invoker.server.Signal;
-import io.projectriff.invoker.server.Start;
-import org.springframework.core.convert.support.DefaultConversionService;
+import io.projectriff.invoker.HttpMessageUtils;
+import io.projectriff.invoker.OutputSignalHttpInputMessage;
+import io.projectriff.invoker.SignalHttpOutputMessage;
+import io.projectriff.invoker.rpc.InputSignal;
+import io.projectriff.invoker.rpc.OutputSignal;
+import io.projectriff.invoker.rpc.ReactorRiffGrpc;
+import io.projectriff.invoker.rpc.StartFrame;
 import org.springframework.http.MediaType;
-import org.springframework.http.converter.FormHttpMessageConverter;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.converter.HttpMessageNotWritableException;
-import org.springframework.http.converter.ObjectToStringHttpMessageConverter;
-import org.springframework.http.converter.StringHttpMessageConverter;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -73,9 +66,10 @@ public class FunctionProxy {
 
         public FunctionInvocationHandler(ManagedChannel channel, Method method, Class<?>[] outputTypes) {
             this.riffStub = ReactorRiffGrpc.newReactorStub(channel);
-            initConverters();
             this.method = method;
             this.outputTypes = outputTypes;
+
+            HttpMessageUtils.installDefaultConverters(converters);
             computeAcceptHeaders();
         }
 
@@ -85,44 +79,32 @@ public class FunctionProxy {
                 return null; //FIXME?
             }
 
-            Signal start = Signal.newBuilder()
-                    .setStart(Start.newBuilder()
-                            .setAccept(acceptHeaders[0]) // FIXME: change proto|accept should be an array
+            InputSignal start = InputSignal.newBuilder()
+                    .setStart(StartFrame.newBuilder()
+                            .addAllExpectedContentTypes(Arrays.asList(acceptHeaders))
                             .build())
                     .build();
 
 
-            Flux<Signal> allInputSignals = Flux.empty();
+            Flux<InputSignal> allInputSignals = Flux.empty();
             for (int i = 0; i < args.length; i++) {
                 final int inputNumber = i;
                 allInputSignals = allInputSignals
                         .mergeWith(((Flux<?>) args[i]).map(t -> toNextSignal(inputNumber, t)));
             }
 
-            Flux<Signal> response = riffStub.invoke(Flux.concat(
+            Flux<OutputSignal> response = riffStub.invoke(Flux.concat(
                     Flux.just(start),
                     allInputSignals
             ));
 
             return response
-                    .groupBy(sig -> Integer.parseInt(sig.getNext().getHeadersOrThrow("RiffOutput")))
+                    .groupBy(sig -> sig.getData().getResultIndex())
                     .map(g -> g.map(s -> convertFromSignal(s, outputTypes[g.key()])))
                     .take(outputTypes.length)
                     .collectList()
                     .block()
                     .toArray(Flux[]::new);
-        }
-
-        private void initConverters() {
-            converters.clear();
-            converters.add(new MappingJackson2HttpMessageConverter());
-            converters.add(new FormHttpMessageConverter());
-            StringHttpMessageConverter sc = new StringHttpMessageConverter();
-            sc.setWriteAcceptCharset(false);
-            converters.add(sc);
-            ObjectToStringHttpMessageConverter oc = new ObjectToStringHttpMessageConverter(new DefaultConversionService());
-            oc.setWriteAcceptCharset(false);
-            converters.add(oc);
         }
 
         private void computeAcceptHeaders() {
@@ -139,10 +121,10 @@ public class FunctionProxy {
                     .toArray(String[]::new);
         }
 
-        private <T> T convertFromSignal(Signal signal, Class<T> outputType) {
-            String ct = signal.getNext().getHeadersOrThrow("Content-Type");
+        private <T> T convertFromSignal(OutputSignal signal, Class<T> outputType) {
+            String ct = signal.getData().getContentType();
             MediaType contentType = MediaType.parseMediaType(ct);
-            NextHttpInputMessage inputMessage = new NextHttpInputMessage(signal);
+            OutputSignalHttpInputMessage inputMessage = new OutputSignalHttpInputMessage(signal);
             try {
                 for (HttpMessageConverter converter : converters) {
                     if (converter.canRead(outputType, contentType)) {
@@ -161,7 +143,7 @@ public class FunctionProxy {
             return supportedMediaTypes.stream().map(mt -> new MediaType(mt.getType(), mt.getSubtype()));
         }
 
-        private Signal toNextSignal(int inputNumber, Object payload) {
+        private InputSignal toNextSignal(int inputNumber, Object payload) {
             if (payload == null) {
                 throw new RuntimeException("TODO");
             }
@@ -169,11 +151,10 @@ public class FunctionProxy {
                 for (HttpMessageConverter converter : converters) {
                     for (Object mediaType : converter.getSupportedMediaTypes()) {
                         if (converter.canWrite(payload.getClass(), (MediaType) mediaType)) {
-                            NextHttpOutputMessage outputMessage = new NextHttpOutputMessage();
+                            SignalHttpOutputMessage outputMessage = new SignalHttpOutputMessage();
                             converter.write(payload, (MediaType) mediaType, outputMessage);
-                            Signal signal = outputMessage.asSignal();
-                            Next next = signal.getNext();
-                            return signal.toBuilder().setNext(next.toBuilder().putHeaders("RiffInput", "" + inputNumber).build()).build();
+                            outputMessage.getHeaders().add(HttpMessageUtils.RIFF_INPUT, "" + inputNumber);
+                            return outputMessage.asInputSignal();
                         }
                     }
                 }

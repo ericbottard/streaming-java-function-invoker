@@ -10,11 +10,20 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpInputMessage;
 import org.springframework.http.MediaType;
 
-public class NextHttpInputMessage implements HttpInputMessage {
+import static io.projectriff.invoker.HttpMessageUtils.RIFF_INPUT;
+
+/**
+ * An implementation of {@link HttpInputMessage} that can be constructed from an {@link InputSignal}.
+ *
+ * Used on the serverside to decode the invocation request.
+ *
+ * @author Eric Bottard
+ */
+public class InputSignalHttpInputMessage implements HttpInputMessage {
 
 	private final InputSignal signal;
 
-	public NextHttpInputMessage(InputSignal signal) {
+	public InputSignalHttpInputMessage(InputSignal signal) {
 		this.signal = signal;
 	}
 
@@ -28,7 +37,7 @@ public class NextHttpInputMessage implements HttpInputMessage {
 		HttpHeaders headers = new HttpHeaders();
 		InputFrame data = signal.getData();
 		data.getHeadersMap().forEach((k, v) -> headers.set(k, v));
-		headers.set("RiffInput", ""+ data.getArgIndex());
+		headers.set(RIFF_INPUT, ""+ data.getArgIndex());
 		headers.setContentType(MediaType.parseMediaType(data.getContentType()));
 		return headers;
 	}
