@@ -1,6 +1,8 @@
 package io.projectriff.invoker.server;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
@@ -78,11 +80,6 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 						return Flux.error(new RuntimeException("Expected first frame to be of type Start"));
 					}
 
-					Tuple2<Object, Integer>[] startTuples = new Tuple2[mh.type().parameterCount()];
-					for (int i = 0; i < startTuples.length; i++) {
-						startTuples[i] = Tuples.of(new Object(), i);
-					}
-
 					ProtocolStringList expectedContentTypesList = firstSignal.getStart().getExpectedContentTypesList();
 					List<List<MediaType>> accept = expectedContentTypesList.stream().map(MediaType::parseMediaTypes).collect(Collectors.toList());
 					return stream
@@ -111,12 +108,7 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 					try {
 						Object[] args = groups.stream().map(g -> g.skip(1)).toArray(Object[]::new);
 						Object result =  mh.invokeWithArguments(args);
-						Flux<?>[] bareOutputs = new Flux<?>[1];
-						if (result.getClass().isArray()) {
-							bareOutputs = (Flux<?>[]) result;
-						} else {
-							bareOutputs[0] = (Flux<?>) result;
-						}
+						Flux<?>[] bareOutputs = promoteToArray(result);
 						Flux<Tuple2<Object, Integer>>[] withOutputIndices =new Flux[bareOutputs.length];
 						for (int i = 0; i < bareOutputs.length; i++) {
 							int j = i;
@@ -127,6 +119,16 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 						throw Exceptions.propagate(t);
 					}
 				});
+	}
+
+	private Flux<?>[] promoteToArray(Object result) {
+		Flux<?>[] bareOutputs = new Flux<?>[1];
+		if (result.getClass().isArray()) {
+			bareOutputs = (Flux<?>[]) result;
+		} else {
+			bareOutputs[0] = (Flux<?>) result;
+		}
+		return bareOutputs;
 	}
 
 	private Function<Tuple2<Object, Integer>, SignalHttpOutputMessage> encode(List<List<MediaType>> expectedContentTypesList) {

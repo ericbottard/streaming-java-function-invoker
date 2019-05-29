@@ -4,21 +4,21 @@ import io.grpc.ManagedChannel;
 import io.projectriff.invoker.HttpMessageUtils;
 import io.projectriff.invoker.OutputSignalHttpInputMessage;
 import io.projectriff.invoker.SignalHttpOutputMessage;
-import io.projectriff.invoker.rpc.InputSignal;
-import io.projectriff.invoker.rpc.OutputSignal;
-import io.projectriff.invoker.rpc.ReactorRiffGrpc;
-import io.projectriff.invoker.rpc.StartFrame;
+import io.projectriff.invoker.rpc.*;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.converter.HttpMessageNotWritableException;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.GroupedFlux;
+import reactor.core.publisher.Hooks;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -69,6 +69,9 @@ public class FunctionProxy {
             this.method = method;
             this.outputTypes = outputTypes;
 
+            Hooks.onOperatorDebug();
+
+
             HttpMessageUtils.installDefaultConverters(converters);
             computeAcceptHeaders();
         }
@@ -93,18 +96,31 @@ public class FunctionProxy {
                         .mergeWith(((Flux<?>) args[i]).map(t -> toNextSignal(inputNumber, t)));
             }
 
+
             Flux<OutputSignal> response = riffStub.invoke(Flux.concat(
                     Flux.just(start),
                     allInputSignals
             ));
 
+            OutputSignal[] usedToForceGroups = new OutputSignal[outputTypes.length];
+            for (int i = 0; i < outputTypes.length; i++) {
+                usedToForceGroups[i] = OutputSignal.newBuilder()
+                        .setData(OutputFrame.newBuilder()
+                                .setResultIndex(i)
+                                .build())
+                        .build();
+            }
+
             return response
+                    .startWith(Flux.fromArray(usedToForceGroups))
                     .groupBy(sig -> sig.getData().getResultIndex())
-                    .map(g -> g.map(s -> convertFromSignal(s, outputTypes[g.key()])))
                     .take(outputTypes.length)
+                    .sort(Comparator.comparingInt(GroupedFlux::key))
+                    .map(g -> g.skip(1)/*drop init frames*/.map(s -> convertFromSignal(s, outputTypes[g.key()])))
                     .collectList()
                     .block()
                     .toArray(Flux[]::new);
+
         }
 
         private void computeAcceptHeaders() {

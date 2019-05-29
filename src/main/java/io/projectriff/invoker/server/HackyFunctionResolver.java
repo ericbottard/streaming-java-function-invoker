@@ -46,9 +46,10 @@ public class HackyFunctionResolver {
 
     public Class[] resolveInputTypes(Object function, Method m) {
         Class<?> result = functionInspector.getOutputType(function);
-        if (result != Object.class) {
+        if (function instanceof Function && result != Object.class) {
             return new Class[]{result};
         }
+
 
         // Extra type not handled by SCF such as BiFunction etc.
         Class<?>[] types = new Class[m.getParameterCount()];
