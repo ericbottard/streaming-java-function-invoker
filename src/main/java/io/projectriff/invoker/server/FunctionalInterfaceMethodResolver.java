@@ -1,64 +1,74 @@
 package io.projectriff.invoker.server;
 
-import org.springframework.core.ResolvableType;
-import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.ReflectionUtils;
-import reactor.core.publisher.Flux;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.Type;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import static java.util.Comparator.comparing;
+import static java.util.stream.Collectors.toList;
 
 /**
  * An implementation of {@link FunctionMethodResolver} that looks at all implemented interfaces of the object
- * and selects the method that implements the (sole) {@code @}{@link FunctionalInterface} contract.
+ * and selects the method that implements the contract defined by {@code @}{@link FunctionalInterface}.
+ * Note that the presence of {@link FunctionalInterface} is not necessary.
  *
  * @author Eric Bottard
+ * @author Florent Biville
  */
 public class FunctionalInterfaceMethodResolver implements FunctionMethodResolver {
+
+    private static final List<Method> OBJECT_PUBLIC_METHODS = Arrays.asList(Object.class.getMethods());
+
     @Override
     public Method resolve(Object target) {
-        Set<Class<?>> functionalInterfaces = ClassUtils.getAllInterfacesAsSet(target).stream()
-                .filter(i -> AnnotationUtils.isAnnotationDeclaredLocally(FunctionalInterface.class, i))
-                .collect(Collectors.toSet());
-        if (functionalInterfaces.size() == 0) {
-            throw new RuntimeException("Could not find any function");
-        }
-        else if (functionalInterfaces.size() > 1) {
-            throw new RuntimeException("Too many functional interfaces implemented: " + functionalInterfaces);
-        }
-        AtomicReference<Method> refOnFunctionInterface = new AtomicReference<>();
-        Class<?> functionalInterface = functionalInterfaces.iterator().next();
-        ReflectionUtils.doWithLocalMethods(functionalInterface, m -> {
-            if (!m.isBridge() && !m.isSynthetic() && !m.isDefault() && !Modifier.isStatic(m.getModifiers())) {
-                if (!refOnFunctionInterface.compareAndSet(null, m)) {
-                    throw new RuntimeException("More than one matching method");
-                };
-            }
-        });
+        Method functionalInterfaceMethod = findFunctionalInterfaceMethod(target);
 
         AtomicReference<Method> refActual = new AtomicReference<>();
-        ReflectionUtils.doWithMethods(target.getClass(), me -> refActual.set(me),
-                overridesMethod(refOnFunctionInterface.get()));
-
+        ReflectionUtils.doWithMethods(
+                target.getClass(),
+                refActual::set,
+                me -> isOverriddenBy(functionalInterfaceMethod, me));
         return refActual.get();
     }
 
-    private ReflectionUtils.MethodFilter overridesMethod(Method fMethod) {
-        //System.out.println("fMethod = " + fMethod);
-        return me -> {
-            boolean b = me.getName().equals(fMethod.getName())
-                    && !me.isBridge() && !me.isSynthetic()
-                    && me.getParameterCount() == fMethod.getParameterCount();
-            //System.out.println("Considering " + me + " => " + b);
-            return b;
-        };
+    private Method findFunctionalInterfaceMethod(Object target) {
+        Set<Class<?>> functionalInterfaces = ClassUtils.getAllInterfacesForClassAsSet(target.getClass()).stream()
+                .filter(i -> filterFunctionalMethods(i).count() == 1)
+                .collect(Collectors.toSet());
+
+        if (functionalInterfaces.size() == 0) {
+            throw new RuntimeException("Could not find any function");
+        } else if (functionalInterfaces.size() > 1) {
+            throw new RuntimeException("Too many functional interfaces implemented: " + functionalInterfaces.stream().sorted(comparing(Class::getName)).collect(toList()));
+        }
+        
+        Class<?> functionalInterface = functionalInterfaces.iterator().next();
+        return filterFunctionalMethods(functionalInterface)
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Cannot happen - functional method not found on function interface " + functionalInterface));
+    }
+
+    private Stream<Method> filterFunctionalMethods(Class<?> functionalInterface) {
+        return Arrays.stream(functionalInterface.getMethods()).filter(this::isFunctionalMethod);
+    }
+
+    private boolean isFunctionalMethod(Method method) {
+        return method.getDeclaringClass().isInterface() // added for completeness but redundant here
+                && Modifier.isAbstract(method.getModifiers())
+                && OBJECT_PUBLIC_METHODS.stream().noneMatch(m -> isOverriddenBy(m, method));
+    }
+
+    private boolean isOverriddenBy(Method baseMethod, Method overridingMethod) {
+        return baseMethod.getDeclaringClass().isAssignableFrom(overridingMethod.getDeclaringClass())
+                && overridingMethod.getName().equals(baseMethod.getName());
+
     }
 }
