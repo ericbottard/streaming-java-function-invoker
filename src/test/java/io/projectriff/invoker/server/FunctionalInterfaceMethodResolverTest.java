@@ -111,8 +111,6 @@ abstract class SuperExplicitClass implements ExplicitFunctionalInterface {
     }
 }
 
-// FIXME: this currently does not work because super-interfaces are not returned by org.springframework.util.ClassUtils#getAllInterfacesAsSet
-// luckily, this situation should not be a real problem
 interface ExtraExplicitInterface extends ExplicitFunctionalInterface {
 
     default void lookAtMyself() {
