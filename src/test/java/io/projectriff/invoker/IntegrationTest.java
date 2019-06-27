@@ -60,7 +60,7 @@ public class IntegrationTest {
 
     @Before
     public void prepareProcess() {
-        processBuilder = new ProcessBuilder(javaExecutable, "-jar", invokerJar);
+        processBuilder = new ProcessBuilder(javaExecutable, "-jar", "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005", invokerJar);
         processBuilder.redirectOutput(new File(String.format("target%s%s.out", File.separator, testName.getMethodName())));
         processBuilder.redirectError(new File(String.format("target%s%s.err", File.separator, testName.getMethodName())));
         processBuilder.environment().clear();
@@ -171,6 +171,41 @@ public class IntegrationTest {
         assertThat(response.length, CoreMatchers.equalTo(1));
         StepVerifier.create(response[0])
                 .expectNext(100, 50, 25)
+                .verifyComplete();
+
+    }
+
+    /*
+     * This tests a function that is packaged as a spring bean, in a boot uberjar.
+     */
+    @Test
+    public void testFunctionBean() throws Exception {
+        setFunctionLocation("repeeater-as-bean-1.0.0-boot");
+        process = processBuilder.start();
+
+        Function<Flux<String>, Flux<Integer>[]> function = FunctionProxy.create(Function.class, connect(), Integer.class);
+
+        Flux<Integer>[] response = function.apply(Flux.just("a", "bb", "ccc"));
+        StepVerifier.create(response[0])
+                .expectNext(1, 2, 3)
+                .verifyComplete();
+
+    }
+
+    /*
+     * This tests a function that is packaged as a spring bean, in a boot uberjar.
+     */
+    @Test
+    public void testMulti() throws Exception {
+        setFunctionLocation("repeater-as-bean-1.0.0-boot");
+        setFunctionBean("com.acme.RepeaterApplication.MyFn");
+        process = processBuilder.start();
+
+        BiFunction<Flux<String>, Flux<Integer>, Flux[]> function = FunctionProxy.create(BiFunction.class, connect(), Double.class, String.class);
+
+        Flux<Integer>[] response = function.apply(Flux.just("a", "bb", "ccc"), Flux.just(1, 2, 3));
+        StepVerifier.create(response[0])
+                .expectNext(1, 2, 3)
                 .verifyComplete();
 
     }

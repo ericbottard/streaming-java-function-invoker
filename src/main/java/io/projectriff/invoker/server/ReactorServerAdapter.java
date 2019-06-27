@@ -104,9 +104,9 @@ public class ReactorServerAdapter<T, V> extends ReactorRiffGrpc.RiffImplBase {
 				.groupBy(Tuple2::getT2, Tuple2::getT1)
 				.take(startTuples.length)
 				.collectSortedList(Comparator.comparingInt(GroupedFlux::key))
-				.flatMapMany(groups -> {
+				.flatMapMany(groupList -> {
 					try {
-						Object[] args = groups.stream().map(g -> g.skip(1)).toArray(Object[]::new);
+						Object[] args = groupList.stream().map(g -> g.skip(1)).toArray(Object[]::new);
 						Object result =  mh.invokeWithArguments(args);
 						Flux<?>[] bareOutputs = promoteToArray(result);
 						Flux<Tuple2<Object, Integer>>[] withOutputIndices =new Flux[bareOutputs.length];
