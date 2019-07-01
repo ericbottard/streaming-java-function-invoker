@@ -48,6 +48,7 @@ public class GrpcServerAdapter extends ReactorRiffGrpc.RiffImplBase {
                     System.out.println("Expecting " + Arrays.asList(downgraded));
 
                     Function<Object, Object> userFn = functionCatalog.lookup(functionName, downgraded);
+                    System.out.println("userFn = " + userFn + "\nnames = " + functionCatalog.getNames(Function.class) + "\n");
 
                     return stream
                             .skip(1L)

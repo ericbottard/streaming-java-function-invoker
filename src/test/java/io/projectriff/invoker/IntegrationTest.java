@@ -60,7 +60,7 @@ public class IntegrationTest {
 
     @Before
     public void prepareProcess() {
-        processBuilder = new ProcessBuilder(javaExecutable, "-jar", "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005", invokerJar);
+        processBuilder = new ProcessBuilder(javaExecutable, "-jar",/* "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005", */invokerJar);
         processBuilder.redirectOutput(new File(String.format("target%s%s.out", File.separator, testName.getMethodName())));
         processBuilder.redirectError(new File(String.format("target%s%s.err", File.separator, testName.getMethodName())));
         processBuilder.environment().clear();
@@ -198,7 +198,8 @@ public class IntegrationTest {
     @Test
     public void testMulti() throws Exception {
         setFunctionLocation("repeater-as-bean-1.0.0-boot");
-        setFunctionBean("com.acme.RepeaterApplication.MyFn");
+        setFunctionMain("com.acme.RepeaterApplication");
+        setFunctionBean("fn");
         process = processBuilder.start();
 
         BiFunction<Flux<String>, Flux<Integer>, Flux[]> function = FunctionProxy.create(BiFunction.class, connect(), Double.class, String.class);
@@ -271,6 +272,10 @@ public class IntegrationTest {
                 .usePlaintext()
                 .build();
         return channel;
+    }
+
+    private String setFunctionMain(String value) {
+        return processBuilder.environment().put("FUNCTION_MAIN", value);
     }
 
     private String setFunctionBean(String value) {

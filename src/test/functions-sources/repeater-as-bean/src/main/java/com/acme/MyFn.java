@@ -7,9 +7,7 @@ import reactor.util.function.Tuples;
 import java.util.Collections;
 import java.util.function.Function;
 
-public class MyFn<A, B> implements Function<Tuple2<Flux<String>, Flux<Integer>>,
-        Tuple2<Flux<Double>, Flux<String>>
-        > {
+public class MyFn implements Function<Tuple2<Flux<String>, Flux<Integer>>, Tuple2<Flux<Double>, Flux<String>>> {
 
 
     @Override

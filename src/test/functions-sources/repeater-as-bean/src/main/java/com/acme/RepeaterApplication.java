@@ -1,16 +1,17 @@
 package com.acme;
 
-import org.springframework.core.ResolvableType;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
 import reactor.core.publisher.Flux;
 import reactor.util.function.Tuple2;
 
-import java.lang.reflect.ParameterizedType;
 import java.util.function.Function;
 
-//@SpringBootApplication
+@SpringBootApplication
 public class RepeaterApplication {
 
-    //@Bean
+    @Bean
     public Function<Tuple2<Flux<String>, Flux<Integer>>,
             Tuple2<Flux<Double>, Flux<String>>
             > fn() {
@@ -18,10 +19,6 @@ public class RepeaterApplication {
     }
 
     public static void main(String[] args) {
-        Class x = MyFn.class;
-        MyFn<String, String> y = new MyFn<String, String>();
-        System.out.println(ResolvableType.forClass(MyFn.class).getType() instanceof ParameterizedType);
-
-        //SpringApplication.run(RepeaterApplication.class, args);
+        SpringApplication.run(RepeaterApplication.class, args);
     }
 }

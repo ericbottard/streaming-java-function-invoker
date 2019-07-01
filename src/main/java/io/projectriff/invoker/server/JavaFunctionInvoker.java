@@ -20,6 +20,7 @@ import org.springframework.cloud.function.context.FunctionCatalog;
 import org.springframework.cloud.function.context.FunctionRegistry;
 import org.springframework.cloud.function.context.catalog.FunctionInspector;
 import org.springframework.cloud.function.deployer.EnableFunctionDeployer;
+import org.springframework.cloud.function.deployer.FunctionProperties;
 import org.springframework.context.annotation.Bean;
 
 import java.lang.reflect.Method;
@@ -43,8 +44,8 @@ public class JavaFunctionInvoker {
      * Startup is done in an init methodHandle to work around late initialization needs of the function deployer.
      */
     @Bean(initMethod = "run", destroyMethod = "close")
-    public GrpcRunner grpcRunner(FunctionCatalog functionCatalog) {
-        return new GrpcRunner(functionCatalog, "function0");
+    public GrpcRunner grpcRunner(FunctionCatalog functionCatalog, FunctionProperties functionProperties) {
+        return new GrpcRunner(functionCatalog, functionProperties.getName());
     }
 
     private static class GrpcRunner {
